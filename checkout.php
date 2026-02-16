@@ -1,14 +1,14 @@
 <?php
 session_start();
-require_once 'includes/conexion.php'; // Necesario para obtener el teléfono
+require_once 'includes/conexion.php'; 
 
-// El guardia de seguridad de la página
+// Seguridad: Verificar sesión
 if (!isset($_SESSION['cliente_id'])) {
     header('Location: login_cliente.php');
     exit();
 }
 
-// 1. OBTENER TELÉFONO DEL CLIENTE (Para enviarlo oculto)
+// 1. OBTENER DATOS DEL CLIENTE
 $id_cliente = $_SESSION['cliente_id'];
 $sql_c = "SELECT telefono FROM usuarios_clientes WHERE id = ?";
 $stmt_c = $conn->prepare($sql_c);
@@ -16,15 +16,29 @@ $stmt_c->bind_param("i", $id_cliente);
 $stmt_c->execute();
 $res_c = $stmt_c->get_result();
 $datos_c = $res_c->fetch_assoc();
-$telefono_cliente = $datos_c['telefono'] ?? ''; // Si no hay, queda vacío
+$telefono_cliente = $datos_c['telefono'] ?? ''; 
+
+// 2. CONSULTAR CONFIGURACIÓN (MODO LLUVIA)
+$modo_lluvia_activo = '0';
+$monto_extra_lluvia = 0.00;
+
+$sql_conf = "SELECT clave, valor FROM configuracion WHERE clave IN ('modo_lluvia', 'monto_recargo_lluvia')";
+$res_conf = $conn->query($sql_conf);
+
+if($res_conf) {
+    while($row = $res_conf->fetch_assoc()) {
+        if($row['clave'] == 'modo_lluvia') $modo_lluvia_activo = $row['valor'];
+        if($row['clave'] == 'monto_recargo_lluvia') $monto_extra_lluvia = floatval($row['valor']);
+    }
+}
 
 include 'includes/header.php';
 ?>
 <body>
 <div class="hero-quickbite">
     <div class="container hero-text text-center">
-        <h1 class="display-4 fw-bold">Ya casi está listo tu pedido</h1>
-        <p class="lead text-white-50">Solo necesitamos unos datos más para la entrega.</p>
+        <h1 class="display-4 fw-bold">Finalizar Pedido</h1>
+        <p class="lead text-white-50">Confirma tu ubicación y método de pago.</p>
     </div>
 </div>
 
@@ -39,49 +53,65 @@ include 'includes/header.php';
 
         <div class="row g-4">
             <div class="col-lg-7">
-                <div class="card checkout-card">
+                <div class="card checkout-card mb-3">
                     <div class="card-header">
-                        <h4 class="mb-0">🛒 Resumen de tu Carrito</h4>
+                        <h4 class="mb-0">🛒 Tu Carrito</h4>
                     </div>
                     <div id="resumen-carrito" class="card-body p-0">
                         <div class="p-4 text-center">
-                            <div class="spinner-border text-primary" role="status">
-                                <span class="visually-hidden">Cargando...</span>
-                            </div>
+                            <div class="spinner-border text-primary" role="status"></div>
                         </div>
                     </div>
                 </div>
             </div>
 
             <div class="col-lg-5">
+                
+                <?php if($modo_lluvia_activo == '1'): ?>
+                <div class="alert alert-warning d-flex align-items-center shadow-sm border-warning mb-4" role="alert">
+                    <div class="me-3">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="30" height="30" fill="currentColor" class="bi bi-cloud-lightning-rain-fill" viewBox="0 0 16 16">
+                          <path d="M2.658 11.026a.5.5 0 0 1 .316.632l-.5 1.5a.5.5 0 1 1-.948-.316l.5-1.5a.5.5 0 0 1 .632-.316zm9.5 0a.5.5 0 0 1 .316.632l-.5 1.5a.5.5 0 1 1-.948-.316l.5-1.5a.5.5 0 0 1 .632-.316zm-7.5 1.5a.5.5 0 0 1 .316.632l-.5 1.5a.5.5 0 1 1-.948-.316l.5-1.5a.5.5 0 0 1 .632-.316zm9.5 0a.5.5 0 0 1 .316.632l-.5 1.5a.5.5 0 1 1-.948-.316l.5-1.5a.5.5 0 0 1 .632-.316zm-.753-8.499a5.001 5.001 0 0 0-9.499-1.004A3.5 3.5 0 1 0 3.5 10H13a3 3 0 0 0 .405-5.973zM8.5 1a4 4 0 0 1 3.976 3.555.5.5 0 0 0 .5.445H13a2 2 0 0 1 0 4H3.5a2.5 2.5 0 1 1 .605-4.926.5.5 0 0 0 .596-.329A4.002 4.002 0 0 1 8.5 1zM7.053 11.276A.5.5 0 0 1 7.5 11h1a.5.5 0 0 1 .474.658l-.28.842-.28.842a.5.5 0 0 1-.948 0l-.28-.842-.28-.842a.5.5 0 0 1 .474-.658z"/>
+                        </svg>
+                    </div>
+                    <div>
+                        <h6 class="alert-heading fw-bold mb-0 text-dark">¡Clima Complicado!</h6>
+                        <p class="mb-0 small text-dark lh-sm">Tarifa dinámica activa por lluvias (+ S/ <?php echo number_format($monto_extra_lluvia, 2); ?>).</p>
+                    </div>
+                </div>
+                <?php endif; ?>
+
                 <div class="card checkout-card">
                     <div class="card-header">
-                        <h4 class="mb-0">📝 Tus Datos para la Entrega</h4>
+                        <h4 class="mb-0">📝 Datos de Entrega</h4>
                     </div>
                     <div class="card-body">
-                        <p class="lead fs-6">Hola, <strong><?php echo htmlspecialchars($_SESSION['cliente_nombre']); ?></strong>.</p>
+                        <p class="lead fs-6">Cliente: <strong><?php echo htmlspecialchars($_SESSION['cliente_nombre']); ?></strong></p>
                         
                         <form action="procesos/procesar_pedido.php" method="POST" id="checkout-form" enctype="multipart/form-data">
                             <input type="hidden" name="costo_envio" id="input_costo_envio">
                             <input type="hidden" name="carrito" id="carrito_data">
-                            <input type="hidden" name="restaurante_id" id="id_restaurante"> <input type="hidden" name="latitud" id="latitud">
+                            <input type="hidden" name="restaurante_id" id="id_restaurante"> 
+                            <input type="hidden" name="latitud" id="latitud">
                             <input type="hidden" name="longitud" id="longitud">
-                            
                             <input type="hidden" name="total" id="input_total">
                             <input type="hidden" name="telefono" value="<?php echo htmlspecialchars($telefono_cliente); ?>">
-                            <input type="hidden" name="referencia" value="-"> <div class="mb-4">
-                                <label class="form-label fw-bold"><i class="bi bi-geo-alt-fill me-2"></i>Ubicación de Entrega</label>
+                            <input type="hidden" name="referencia" value="-"> 
+
+                            <div class="mb-4">
+                                <label class="form-label fw-bold"><i class="bi bi-geo-alt-fill me-2"></i>Ubicación Exacta</label>
                                 <div id="mapa-checkout" style="height: 250px; width: 100%; border-radius: 10px; margin-bottom: 10px;" class="border"></div>
-                                <div class="form-text mb-2 text-primary"><i class="bi bi-info-circle"></i> Mueve el pin rojo para ajustar tu ubicación exacta.</div>
+                                <div id="alerta-zona" class="form-text mb-2 fw-bold"></div>
+                                
                                 <div class="d-grid mb-3">
                                     <button type="button" class="btn btn-outline-primary btn-sm" id="usar-gps-btn">
-                                        <i class="bi bi-crosshair me-1"></i> Detectar mi ubicación (GPS)
+                                        <i class="bi bi-crosshair me-1"></i> Usar mi ubicación GPS
                                     </button>
                                     <div id="gps-status" class="form-text text-center"></div>
                                 </div>
                                 
-                                <label for="direccion" class="form-label small text-muted">Dirección exacta / Referencia</label>
-                                <textarea class="form-control" id="direccion" name="direccion" rows="2" required placeholder="Ej: Casa verde frente al parque..."></textarea>
+                                <label for="direccion" class="form-label small text-muted">Referencia escrita (Color de casa, piso, etc.)</label>
+                                <textarea class="form-control" id="direccion" name="direccion" rows="2" required placeholder="Ej: Casa verde de 3 pisos frente al parque..."></textarea>
                             </div>
 
                             <div class="mb-4">
@@ -92,26 +122,24 @@ include 'includes/header.php';
                                     <option value="efectivo">Efectivo</option>
                                 </select>
 
-                                <div id="info-yape-container" class="card mb-3 border-primary" style="display: none; background-color: #f8f9fa;">
+                                <div id="info-yape-container" class="card mb-3 border-primary bg-light" style="display: none;">
                                     <div class="card-body text-center">
-                                        <h6 class="text-primary fw-bold mb-3"><i class="bi bi-qr-code-scan"></i> Escanea y Paga</h6>
+                                        <h6 class="text-primary fw-bold mb-3"><i class="bi bi-qr-code"></i> Escanea y Paga</h6>
                                         <div id="yape-qr-img-placeholder" class="mb-3 d-flex justify-content-center"></div>
-                                        <p class="mb-1 text-muted small">Número asociado:</p>
+                                        <p class="mb-1 text-muted small">Número:</p>
                                         <div class="d-flex justify-content-center align-items-center gap-2 mb-3">
                                             <h3 class="fw-bold mb-0 text-dark" id="yape-numero-display">...</h3>
-                                            <button type="button" class="btn btn-outline-primary btn-sm rounded-circle" id="btn-copiar-yape"><i class="bi bi-clipboard-check"></i></button>
+                                            <button type="button" class="btn btn-outline-primary btn-sm rounded-circle" id="btn-copiar-yape"><i class="bi bi-clipboard"></i></button>
                                         </div>
-                                        
                                         <div class="text-start bg-white p-3 rounded border">
-                                            <label for="comprobante_yape" class="form-label small fw-bold text-dark">Sube tu captura del pago (Obligatorio)</label>
+                                            <label for="comprobante_yape" class="form-label small fw-bold text-dark">Sube la captura (Obligatorio)</label>
                                             <input type="file" class="form-control form-control-sm" id="comprobante_yape" name="evidencia_yape" accept="image/*">
-                                            <div class="form-text small">El restaurante verificará esta imagen antes de preparar tu pedido.</div>
                                         </div>
                                     </div>
                                 </div>
 
                                 <div id="div-vuelto" style="display: none;">
-                                    <label for="monto_pagar" class="form-label small">¿Con cuánto vas a pagar?</label>
+                                    <label for="monto_pagar" class="form-label small">¿Con cuánto pagarás?</label>
                                     <div class="input-group">
                                         <span class="input-group-text">S/</span>
                                         <input type="number" class="form-control" id="monto_pagar" name="monto_pagar" placeholder="Ej: 50.00" step="0.10">
@@ -119,8 +147,16 @@ include 'includes/header.php';
                                 </div>
                             </div>
 
+                            <div class="form-check mb-4 p-3 border rounded bg-white shadow-sm">
+                                <input class="form-check-input" type="checkbox" id="check_puerta" style="transform: scale(1.2);">
+                                <label class="form-check-label small text-dark lh-sm ms-2" for="check_puerta">
+                                    <strong>⚠️ Política de Entrega Segura:</strong><br>
+                                    Acepto recibir el pedido en la <u>puerta principal de la calle</u>. Entiendo que el repartidor no sube a pisos ni entra a condominios por seguridad.
+                                </label>
+                            </div>
+
                             <div class="d-grid">
-                                <button type="submit" class="btn btn-primary btn-lg btn-confirm-order">Confirmar Pedido</button>
+                                <button type="submit" class="btn btn-primary btn-lg btn-confirm-order" disabled>Cargando mapa...</button>
                             </div>
                         </form>
                     </div>
@@ -134,45 +170,47 @@ include 'includes/header.php';
     <div class="modal-dialog modal-dialog-centered">
         <div class="modal-content border-0 shadow-lg" style="border-radius: 20px;">
             <div class="modal-header bg-primary text-white" style="border-radius: 20px 20px 0 0;">
-                <h5 class="modal-title fw-bold"><i class="bi bi-receipt me-2"></i>Confirma tu Pedido</h5>
-                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                <h5 class="modal-title fw-bold">Confirma tu Pedido</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
             </div>
             <div class="modal-body p-4 bg-light">
                 <div class="mb-3 p-3 bg-white rounded shadow-sm border">
-                    <h6 class="fw-bold text-primary mb-2">📍 Datos de Entrega</h6>
-                    <p class="mb-1 small text-muted">Dirección / Referencia:</p>
+                    <h6 class="fw-bold text-primary mb-2">📍 Destino</h6>
                     <p class="mb-0 fw-bold text-dark" id="boleta-direccion">...</p>
-                    <p class="mb-0 small text-muted mt-1">Tel: <?php echo htmlspecialchars($telefono_cliente); ?></p>
                 </div>
 
                 <div class="card border-0 shadow-sm">
                     <div class="card-body">
-                        <h6 class="fw-bold text-primary mb-3">🧾 Resumen de Pago</h6>
                         <ul class="list-group list-group-flush mb-3" id="boleta-items"></ul>
                         
                         <div class="d-flex justify-content-between mb-2">
                             <span class="text-muted">Subtotal Productos:</span>
                             <span class="fw-bold" id="boleta-subtotal">S/ 0.00</span>
                         </div>
-                        <div class="d-flex justify-content-between mb-2">
+                        
+                        <div class="d-flex justify-content-between mb-2 align-items-center">
                             <span class="text-muted">Costo de Envío:</span>
-                            <span class="fw-bold text-primary" id="boleta-envio">S/ 0.00</span>
+                            <div class="text-end">
+                                <span class="fw-bold text-primary" id="boleta-envio">S/ 0.00</span>
+                                <div id="boleta-badges" class="small"></div>
+                            </div>
                         </div>
+
                         <hr class="my-2 dashed">
                         <div class="d-flex justify-content-between align-items-center">
-                            <span class="h5 fw-bold text-dark mb-0">TOTAL A PAGAR:</span>
+                            <span class="h5 fw-bold text-dark mb-0">TOTAL:</span>
                             <span class="h4 fw-bold text-success mb-0" id="boleta-total">S/ 0.00</span>
                         </div>
                         <div class="mt-3 text-center">
-                            <span class="badge bg-secondary" id="boleta-metodo">Método de Pago: ...</span>
+                            <span class="badge bg-secondary" id="boleta-metodo">...</span>
                         </div>
                     </div>
                 </div>
             </div>
             <div class="modal-footer border-0 bg-light justify-content-center pb-4">
-                <button type="button" class="btn btn-outline-secondary px-4 rounded-pill" data-bs-dismiss="modal">Cancelar / Editar</button>
+                <button type="button" class="btn btn-outline-secondary px-4 rounded-pill" data-bs-dismiss="modal">Volver</button>
                 <button type="button" class="btn btn-success px-5 rounded-pill fw-bold shadow" id="btn-enviar-final">
-                    <i class="bi bi-check-circle-fill me-2"></i> ¡Confirmar Pedido!
+                    ¡Confirmar Pedido!
                 </button>
             </div>
         </div>
@@ -184,20 +222,166 @@ include 'includes/header.php';
 
 <script>
 document.addEventListener('DOMContentLoaded', function() {
-    
+
     // =========================================================
     // 1. CONFIGURACIÓN Y VARIABLES GLOBALES
     // =========================================================
-    // ID CLIENTE PHP
     const CLIENTE_ID = <?php echo $_SESSION['cliente_id']; ?>;
+    
+    // --- VARIABLES DE CLIMA ---
+    const ES_MODO_LLUVIA = <?php echo ($modo_lluvia_activo == '1') ? 'true' : 'false'; ?>;
+    const RECARGO_LLUVIA = <?php echo floatval($monto_extra_lluvia); ?>;
 
+    // --- VARIABLES DE VOLUMEN (MOCHILA) ---
+    const CAPACIDAD_MOCHILA = 10;      // Puntos máximos
+    const RECARGO_CARGA_PESADA = 4.00; // Recargo si se pasa
+
+    // --- ZONA DE REPARTO ---
+    const zonaReparto = [
+    [-10.67445, -76.24746],
+    [-10.67126, -76.24692],
+    [-10.66983, -76.24769],
+    [-10.66839, -76.24797],
+    [-10.66692, -76.24842],
+    [-10.66485, -76.24937],
+    [-10.66306, -76.24913],
+    [-10.66106, -76.24906],
+    [-10.65722, -76.25087],
+    [-10.65804, -76.25286],
+    [-10.66065, -76.25518],
+    [-10.66171, -76.25735],
+    [-10.66388, -76.25799],
+    [-10.66555, -76.26001],
+    [-10.66555, -76.26263],
+    [-10.66711, -76.26284],
+    [-10.66711, -76.26374],
+    [-10.66623, -76.26451],
+    [-10.66517, -76.26589],
+    [-10.66623, -76.26713],
+    [-10.66711, -76.26765],
+    [-10.66825, -76.26786],
+    [-10.6693, -76.26812],
+    [-10.66998, -76.26872],
+    [-10.67059, -76.26924],
+    [-10.66987, -76.26954],
+    [-10.66865, -76.26941],
+    [-10.66795, -76.27018],
+    [-10.66744, -76.27061],
+    [-10.6682, -76.27207],
+    [-10.66907, -76.27363],
+    [-10.66997, -76.27355],
+    [-10.67099, -76.27396],
+    [-10.67202, -76.27402],
+    [-10.67259, -76.27348],
+    [-10.6728, -76.27267],
+    [-10.67366, -76.27308],
+    [-10.6743, -76.2728],
+    [-10.67396, -76.2716],
+    [-10.67341, -76.27102],
+    [-10.6728, -76.27067],
+    [-10.67225, -76.26872],
+    [-10.67314, -76.26724],
+    [-10.67426, -76.26692],
+    [-10.67255, -76.2661],
+    [-10.6707, -76.26563],
+    [-10.66947, -76.26537],
+    [-10.66855, -76.26426],
+    [-10.66804, -76.26288],
+    [-10.66791, -76.26117],
+    [-10.66901, -76.25984],
+    [-10.66897, -76.25833],
+    [-10.66914, -76.25743],
+    [-10.67076, -76.25763],
+    [-10.67189, -76.25709],
+    [-10.67316, -76.25619],
+    [-10.67409, -76.25542],
+    [-10.67529, -76.25441],
+    [-10.67609, -76.25389],
+    [-10.67685, -76.25366],
+    [-10.67793, -76.25394],
+    [-10.67825, -76.25432],
+    [-10.67831, -76.25476],
+    [-10.67834, -76.25534],
+    [-10.67846, -76.25597],
+    [-10.67884, -76.2563],
+    [-10.67943, -76.25621],
+    [-10.67999, -76.25609],
+    [-10.68054, -76.25634],
+    [-10.68113, -76.25678],
+    [-10.68176, -76.25728],
+    [-10.68258, -76.25758],
+    [-10.68284, -76.25777],
+    [-10.68352, -76.25824],
+    [-10.6839, -76.25846],
+    [-10.6845, -76.26013],
+    [-10.68558, -76.26083],
+    [-10.68575, -76.26239],
+    [-10.68628, -76.2632],
+    [-10.68648, -76.26389],
+    [-10.68664, -76.26449],
+    [-10.68748, -76.26472],
+    [-10.68825, -76.26468],
+    [-10.6887, -76.26462],
+    [-10.68912, -76.26365],
+    [-10.68954, -76.26276],
+    [-10.69003, -76.26152],
+    [-10.69006, -76.26037],
+    [-10.68954, -76.25943],
+    [-10.6901, -76.25821],
+    [-10.69115, -76.25649],
+    [-10.69237, -76.25524],
+    [-10.69199, -76.25314],
+    [-10.6906, -76.25228],
+    [-10.69064, -76.25134],
+    [-10.69106, -76.24988],
+    [-10.69064, -76.24898],
+    [-10.68984, -76.24834],
+    [-10.68883, -76.24846],
+    [-10.68824, -76.24812],
+    [-10.68782, -76.24799],
+    [-10.6882, -76.24718],
+    [-10.68858, -76.24658],
+    [-10.68921, -76.24709],
+    [-10.69005, -76.24739],
+    [-10.69022, -76.24649],
+    [-10.68959, -76.24537],
+    [-10.68919, -76.24474],
+    [-10.68961, -76.24424],
+    [-10.69031, -76.24341],
+    [-10.69098, -76.24379],
+    [-10.69171, -76.24403],
+    [-10.69212, -76.24327],
+    [-10.69193, -76.2428],
+    [-10.69166, -76.2424],
+    [-10.69109, -76.24216],
+    [-10.69061, -76.24193],
+    [-10.69019, -76.24169],
+    [-10.6898, -76.24156],
+    [-10.68951, -76.24136],
+    [-10.68869, -76.24107],
+    [-10.68772, -76.24073],
+    [-10.68722, -76.24048],
+    [-10.68644, -76.24025],
+    [-10.68459, -76.24239],
+    [-10.684, -76.24306],
+    [-10.68248, -76.24331],
+    [-10.6809, -76.2449],
+    [-10.68048, -76.24662],
+    [-10.67955, -76.24782],
+    [-10.67888, -76.24851],
+    [-10.67803, -76.24851],
+    [-10.67703, -76.24799],
+    [-10.676, -76.24757],
+    [-10.67548, -76.24736],
+];
+
+    // DOM
     const resumenDiv = document.getElementById('resumen-carrito');
     const carritoDataInput = document.getElementById('carrito_data');
     const restauranteIdInput = document.getElementById('id_restaurante');
-    const totalInput = document.getElementById('input_total'); // NUEVO
+    const totalInput = document.getElementById('input_total');
     const checkoutForm = document.getElementById('checkout-form');
     
-    // Elementos de Pago y Mapa
     const selectPago = document.getElementById('metodo_pago');
     const containerYape = document.getElementById('info-yape-container');
     const displayYapeNum = document.getElementById('yape-numero-display');
@@ -206,377 +390,350 @@ document.addEventListener('DOMContentLoaded', function() {
     const divVuelto = document.getElementById('div-vuelto');
     const inputVuelto = document.getElementById('monto_pagar');
     
-    // Modal y Botones Finales
     const modalBoleta = new bootstrap.Modal(document.getElementById('modalBoleta'));
     const btnEnviarFinal = document.getElementById('btn-enviar-final');
     const btnConfirmarInicial = document.querySelector('.btn-confirm-order');
+    const alertaZona = document.getElementById('alerta-zona');
+    const inputYapeFile = document.getElementById('comprobante_yape');
+    const checkPuerta = document.getElementById('check_puerta'); // Referencia al checkbox puerta
 
-    // Datos del Carrito
+    // Estado
     const carritoKey = `carritoData_${CLIENTE_ID}`;
     let carritoData = JSON.parse(sessionStorage.getItem(carritoKey)) || { items: [], restauranteId: null };
     let carrito = carritoData.items;
-
-    // Datos Geográficos
     let datosRestaurante = { lat: null, lon: null, yapeNumero: '', yapeQR: '' };
+    
     const defaultLat = -10.683; 
     const defaultLng = -76.256;
-    let userLat = defaultLat;
+    let userLat = defaultLat; 
     let userLng = defaultLng;
+    
+    let costoEnvioActual = 0;
+    let estaEnZona = true;
+    let esCargaPesada = false;
 
     // =========================================================
     // 2. INICIALIZAR MAPA
     // =========================================================
+    let mapa, marcador, poligonoZona;
     if(document.getElementById('mapa-checkout')) {
-        var mapa = L.map('mapa-checkout').setView([defaultLat, defaultLng], 15);
+        mapa = L.map('mapa-checkout').setView([defaultLat, defaultLng], 15);
         L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution: '© OpenStreetMap' }).addTo(mapa);
-        var marcador = L.marker([defaultLat, defaultLng], { draggable: true }).addTo(mapa);
-    }
-
-    // =========================================================
-    // 3. FUNCIONES DEL CARRITO
-    // =========================================================
-    function renderCarrito() {
-        resumenDiv.innerHTML = '';
-
-        if (carrito.length === 0) {
-            resumenDiv.innerHTML = '<div class="p-4 text-center text-muted">Tu carrito está vacío.</div>';
-            checkoutForm.style.display = 'none';
-            return;
+        
+        if (zonaReparto.length > 2) {
+            poligonoZona = L.polygon(zonaReparto, { color: '#198754', fillColor: '#198754', fillOpacity: 0.1, weight: 2 }).addTo(mapa);
         }
-
-        checkoutForm.style.display = 'block';
-        let totalProductos = 0;
-
-        const responsiveWrapper = document.createElement('div');
-        responsiveWrapper.className = 'table-responsive';
-
-        const tabla = document.createElement('table');
-        tabla.className = 'table table-borderless align-middle summary-table';
-        tabla.innerHTML = `
-            <thead class="table-light">
-                <tr>
-                    <th scope="col" class="ps-4">Producto</th>
-                    <th scope="col" class="text-center">Cant.</th>
-                    <th scope="col" class="text-end pe-4">Subtotal</th>
-                    <th></th>
-                </tr>
-            </thead>
-            <tbody></tbody>
-            <tfoot></tfoot>
-        `;
-
-        const tbody = tabla.querySelector('tbody');
-        carrito.forEach(item => {
-            const subtotal = item.cantidad * item.precio;
-            totalProductos += subtotal;
-            const fila = document.createElement('tr');
-            fila.innerHTML = `
-                <td class="ps-4">${item.nombre}</td>
-                <td class="text-center">
-                    <div class="input-group input-group-sm justify-content-center" style="width: 100px; margin:auto;">
-                        <button class="btn btn-outline-secondary px-2" type="button" onclick="modificarCantidad('${item.id}', -1)">-</button>
-                        <span class="input-group-text px-2">${item.cantidad}</span>
-                        <button class="btn btn-outline-secondary px-2" type="button" onclick="modificarCantidad('${item.id}', 1)">+</button>
-                    </div>
-                </td>
-                <td class="text-end pe-4">S/ ${subtotal.toFixed(2)}</td>
-                <td class="text-center">
-                    <button class="btn btn-outline-danger btn-sm rounded-circle" type="button" onclick="eliminarItem('${item.id}')"><i class="bi bi-trash"></i></button>
-                </td>
-            `;
-            tbody.appendChild(fila);
-        });
-
-        const tfoot = tabla.querySelector('tfoot');
-        tfoot.innerHTML = `
-            <tr id="row-total-final" class="total-row border-top">
-                <td colspan="2" class="text-end fw-bold ps-4">Total a Pagar</td>
-                <td class="text-end fw-bold h5 pe-4" id="celda-total-final">S/ ${totalProductos.toFixed(2)}</td>
-                <td></td>
-            </tr>
-        `;
-
-        responsiveWrapper.appendChild(tabla);
-        resumenDiv.appendChild(responsiveWrapper);
-
-        // Actualizar inputs ocultos
-        carritoDataInput.value = JSON.stringify(carrito);
-        restauranteIdInput.value = carritoData.restauranteId;
-
-        actualizarTotalesEnvio(); 
+        marcador = L.marker([defaultLat, defaultLng], { draggable: true }).addTo(mapa);
     }
 
-    // Funciones globales
-    window.modificarCantidad = function(idPlato, cambio) {
-        const item = carrito.find(i => i.id === idPlato);
-        if (item) {
-            item.cantidad += cambio;
-            if (item.cantidad <= 0) eliminarItem(idPlato);
-            else guardarYRenderizar();
+    // =========================================================
+    // 3. LÓGICA DE VOLUMEN (MOCHILA)
+    // =========================================================
+    function calcularPuntosVolumen(nombre) {
+        const n = nombre.toLowerCase();
+        if (n.includes('entero') || n.includes('familiar') || n.includes('banquete') || n.includes('grande')) return 4;
+        if (n.includes('medio') || n.includes('1/2') || n.includes('parrilla')) return 2;
+        if (n.includes('gaseosa') || n.includes('bebida') || n.includes('agua')) return 0.5;
+        return 1; // Plato normal
+    }
+
+    // =========================================================
+    // 4. LÓGICA DE ZONA (GEOFENCING)
+    // =========================================================
+    function puntoEnPoligono(lat, lng, poly) {
+        var x = lat, y = lng, inside = false;
+        for (var i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+            var xi = poly[i][0], yi = poly[i][1];
+            var xj = poly[j][0], yj = poly[j][1];
+            var intersect = ((yi > y) != (yj > y)) && (x < (xj - xi) * (y - yi) / (yj - yi) + xi);
+            if (intersect) inside = !inside;
+        }
+        return inside;
+    }
+
+    function verificarZona() {
+        if (!zonaReparto || zonaReparto.length < 3) return true;
+        const adentro = puntoEnPoligono(userLat, userLng, zonaReparto);
+        
+        if (!adentro) {
+            estaEnZona = false;
+            if(alertaZona) alertaZona.innerHTML = '<span class="text-danger"><i class="bi bi-x-circle-fill"></i> Fuera de zona de cobertura.</span>';
+            if(document.getElementById('valor-envio')) document.getElementById('valor-envio').innerHTML = '<span class="badge bg-danger">Sin Cobertura</span>';
+            return false;
+        } else {
+            estaEnZona = true;
+            if(alertaZona) alertaZona.innerHTML = '<span class="text-success"><i class="bi bi-geo-alt-fill"></i> Cobertura confirmada.</span>';
+            validarBotonConfirmacion();
+            return true;
         }
     }
 
-    window.eliminarItem = function(idPlato) {
-        carrito = carrito.filter(i => i.id !== idPlato);
-        guardarYRenderizar();
+    // =========================================================
+    // 5. CÁLCULO DE COSTO DE ENVÍO
+    // =========================================================
+    async function calcularCostoEnvio(clienteLat, clienteLon) {
+        if (!datosRestaurante.lat || !datosRestaurante.lon) return 5.00;
+
+        // 1. Calcular Volumen
+        let totalPuntos = 0;
+        carrito.forEach(item => { totalPuntos += calcularPuntosVolumen(item.nombre) * item.cantidad; });
+        esCargaPesada = (totalPuntos > CAPACIDAD_MOCHILA);
+        console.log(`📦 Puntos: ${totalPuntos}`);
+
+        try {
+            // 2. Calcular Distancia Real (OSRM)
+            const url = `https://router.project-osrm.org/route/v1/driving/${datosRestaurante.lon},${datosRestaurante.lat};${clienteLon},${clienteLat}?overview=false`;
+            const response = await fetch(url);
+            const data = await response.json();
+            let distanciaKm = 0;
+
+            if (data.code !== 'Ok' || !data.routes || data.routes.length === 0) {
+                distanciaKm = calcularDistanciaLineal(clienteLat, clienteLon);
+            } else {
+                distanciaKm = data.routes[0].distance / 1000;
+            }
+
+            // 3. Tarifa Base
+            let costo = 5.00; 
+            if (distanciaKm > 1.5) { 
+                costo += (distanciaKm - 1.5) * 1.50; 
+            }
+
+            // 4. Recargos
+            if (ES_MODO_LLUVIA) costo += RECARGO_LLUVIA;
+            if (esCargaPesada) costo += RECARGO_CARGA_PESADA;
+
+            return Math.round(costo * 10) / 10;
+
+        } catch (error) {
+            console.error("Error ruta:", error);
+            // Fallback
+            let costo = 5.00;
+            if(ES_MODO_LLUVIA) costo += RECARGO_LLUVIA;
+            if(esCargaPesada) costo += RECARGO_CARGA_PESADA;
+            return costo;
+        }
     }
 
-    function guardarYRenderizar() {
-        carritoData.items = carrito;
-        sessionStorage.setItem(carritoKey, JSON.stringify(carritoData));
-        renderCarrito();
+    function calcularDistanciaLineal(lat1, lon1) {
+        const R = 6371; 
+        const dLat = (lat1 - datosRestaurante.lat) * Math.PI / 180;
+        const dLon = (lon1 - datosRestaurante.lon) * Math.PI / 180;
+        const a = Math.sin(dLat/2) * Math.sin(dLat/2) + Math.cos(datosRestaurante.lat * Math.PI / 180) * Math.cos(lat1 * Math.PI / 180) * Math.sin(dLon/2) * Math.sin(dLon/2);
+        const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+        return R * c;
+    }
+
+    async function actualizarTotalesEnvio() {
+        if (!verificarZona()) { validarBotonConfirmacion(); return 0; }
+
+        if(document.getElementById('valor-envio')) document.getElementById('valor-envio').innerHTML = '...';
+        if(btnConfirmarInicial) btnConfirmarInicial.disabled = true;
+
+        costoEnvioActual = await calcularCostoEnvio(userLat, userLng);
+        
+        // Inputs Hidden
+        if(document.getElementById('input_costo_envio')) document.getElementById('input_costo_envio').value = costoEnvioActual.toFixed(2);
+        if(document.getElementById('latitud')) document.getElementById('latitud').value = userLat;
+        if(document.getElementById('longitud')) document.getElementById('longitud').value = userLng;
+
+        let subtotalProductos = 0;
+        carrito.forEach(i => subtotalProductos += i.precio * i.cantidad);
+        const totalFinal = subtotalProductos + costoEnvioActual;
+
+        if(totalInput) totalInput.value = totalFinal.toFixed(2);
+
+        // UI Tabla de Costos
+        const tfoot = document.querySelector('.summary-table tfoot');
+        if(tfoot) {
+            const filasViejas = tfoot.querySelectorAll('.fila-envio-dinamica');
+            filasViejas.forEach(f => f.remove());
+            
+            const rowTotal = document.getElementById('row-total-final');
+            
+            let etiquetas = '';
+            if(ES_MODO_LLUVIA) etiquetas += ' <span class="badge bg-warning text-dark"><i class="bi bi-cloud-rain"></i> Lluvia</span>';
+            if(esCargaPesada) etiquetas += ' <span class="badge bg-dark"><i class="bi bi-box-seam"></i> Carga Pesada</span>';
+            
+            const rowEnvio = document.createElement('tr');
+            rowEnvio.className = 'fila-envio-dinamica';
+            rowEnvio.innerHTML = `<td colspan="2" class="text-end text-muted small pe-4">Envío ${etiquetas}</td><td class="text-end fw-bold text-primary pe-4">S/ ${costoEnvioActual.toFixed(2)}</td><td></td>`;
+            
+            tfoot.insertBefore(rowEnvio, rowTotal);
+            
+            if (document.getElementById('celda-total-final')) document.getElementById('celda-total-final').textContent = `S/ ${totalFinal.toFixed(2)}`;
+        }
+
+        validarBotonConfirmacion();
+        return costoEnvioActual;
     }
 
     // =========================================================
-    // 4. LÓGICA DE PRECIOS Y ENVÍO
+    // 6. RENDERIZADO CARRITO
     // =========================================================
     if (carritoData && carritoData.restauranteId) {
         fetch(`procesos/obtener_datos_restaurante.php?id_restaurante=${carritoData.restauranteId}`)
-            .then(response => response.json())
+            .then(res => res.json())
             .then(resp => {
                 if (resp.status === 'success') {
-                    datosRestaurante.lat = parseFloat(resp.data.latitud);
-                    datosRestaurante.lon = parseFloat(resp.data.longitud);
-                    datosRestaurante.yapeNumero = resp.data.yape_numero;
-                    datosRestaurante.yapeQR = resp.data.yape_qr;
+                    datosRestaurante = {
+                        lat: parseFloat(resp.data.latitud), lon: parseFloat(resp.data.longitud),
+                        yapeNumero: resp.data.yape_numero, yapeQR: resp.data.yape_qr
+                    };
                     actualizarTotalesEnvio();
                 }
-            })
-            .catch(err => console.error("Error datos restaurante:", err));
+            });
     }
 
-    // =========================================================
-// LÓGICA DE CÁLCULO DE ENVÍO (Dinámico por Restaurante)
-// =========================================================
-
-function calcularCostoEnvio(clienteLat, clienteLon) {
-    // 1. Validar que tengamos la ubicación del restaurante
-    if (!datosRestaurante.lat || !datosRestaurante.lon) {
-        console.log("No hay coordenadas del restaurante, cobrando tarifa base.");
-        return 5.00; 
-    }
-
-    // 2. Fórmula de Haversine para calcular distancia real en KM
-    const R = 6371; 
-    const dLat = (clienteLat - datosRestaurante.lat) * Math.PI / 180;
-    const dLon = (clienteLon - datosRestaurante.lon) * Math.PI / 180;
-    const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
-              Math.cos(datosRestaurante.lat * Math.PI / 180) * Math.cos(clienteLat * Math.PI / 180) * Math.sin(dLon/2) * Math.sin(dLon/2);
-    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-    
-    const distanciaKm = R * c; 
-    console.log(`Distancia calculada: ${distanciaKm.toFixed(2)} km`);
-
-    // 3. Tarifario
-    let costo = 5.00; 
-
-    if (distanciaKm > 1.5) { 
-        // Si se pasa de 1.5 km, cobramos el exceso
-        const kmAdicionales = distanciaKm - 1.5;
-        // ¡AQUÍ BORRAMOS LA LÍNEA QUE DABA ERROR!
-        costo += kmAdicionales * 2.00; 
-    }
-
-    return Math.round(costo * 10) / 10;
-}
-
-    function actualizarTotalesEnvio() {
-    const costoEnvio = calcularCostoEnvio(userLat, userLng);
-    
-    // --- AGREGAR ESTA LÍNEA AQUÍ ---
-    // Actualizamos el input oculto para que se envíe a la base de datos
-    if(document.getElementById('input_costo_envio')) {
-        document.getElementById('input_costo_envio').value = costoEnvio.toFixed(2);
-    }
-    // -------------------------------
-
-    if(document.getElementById('latitud')) document.getElementById('latitud').value = userLat;
-    if(document.getElementById('longitud')) document.getElementById('longitud').value = userLng;
-
-    let subtotalProductos = 0;
-    carrito.forEach(i => subtotalProductos += i.precio * i.cantidad);
-    
-    const totalFinal = subtotalProductos + costoEnvio;
-
-    if(totalInput) totalInput.value = totalFinal.toFixed(2);
-
-    const tfoot = document.querySelector('.summary-table tfoot');
-    if(tfoot) {
-        let rowEnvio = document.getElementById('row-costo-envio');
-        const rowTotal = document.getElementById('row-total-final');
+    function renderCarrito() {
+        resumenDiv.innerHTML = '';
+        if (carrito.length === 0) {
+            resumenDiv.innerHTML = '<div class="p-4 text-center text-muted">Vacío</div>';
+            checkoutForm.style.display = 'none';
+            return;
+        }
+        checkoutForm.style.display = 'block';
         
-        if (!rowEnvio && rowTotal) {
-            rowEnvio = document.createElement('tr');
-            rowEnvio.id = 'row-costo-envio';
-            rowEnvio.innerHTML = `<td colspan="2" class="text-end text-muted small pe-4">Costo de Envío (Distancia)</td><td class="text-end text-muted small pe-4" id="valor-envio"></td><td></td>`;
-            tfoot.insertBefore(rowEnvio, rowTotal);
-        }
+        let htmlTabla = `<table class="table table-borderless align-middle summary-table"><thead class="table-light"><tr><th class="ps-3">Prod</th><th class="text-center">Cant</th><th class="text-end pe-3">Sub</th><th></th></tr></thead><tbody>`;
+        carrito.forEach(item => {
+            htmlTabla += `<tr><td class="ps-3 small">${item.nombre}</td><td class="text-center"><div class="btn-group btn-group-sm"><button class="btn btn-outline-secondary py-0" onclick="mod('${item.id}', -1)">-</button><button class="btn btn-outline-secondary py-0" disabled>${item.cantidad}</button><button class="btn btn-outline-secondary py-0" onclick="mod('${item.id}', 1)">+</button></div></td><td class="text-end pe-3 small">S/ ${(item.precio*item.cantidad).toFixed(2)}</td><td class="text-center"><i class="bi bi-x text-danger" style="cursor:pointer" onclick="del('${item.id}')"></i></td></tr>`;
+        });
+        htmlTabla += `</tbody><tfoot><tr id="row-total-final" class="border-top"><td colspan="2" class="text-end fw-bold ps-3">Total Pagar</td><td class="text-end fw-bold h5 pe-3" id="celda-total-final">...</td><td></td></tr></tfoot></table>`;
         
-        if (document.getElementById('valor-envio')) {
-            document.getElementById('valor-envio').textContent = `S/ ${costoEnvio.toFixed(2)}`;
-        }
-        if (document.getElementById('celda-total-final')) {
-            document.getElementById('celda-total-final').textContent = `S/ ${totalFinal.toFixed(2)}`;
-        }
+        const wrapper = document.createElement('div');
+        wrapper.className = 'table-responsive';
+        wrapper.innerHTML = htmlTabla;
+        resumenDiv.appendChild(wrapper);
+        
+        carritoDataInput.value = JSON.stringify(carrito);
+        restauranteIdInput.value = carritoData.restauranteId;
+        actualizarTotalesEnvio();
     }
-    return costoEnvio;
-}
 
-    // =========================================================
-    // 5. EVENTOS MAPA, GPS Y PAGO
-    // =========================================================
+    // Funciones globales
+    window.mod = (id, d) => { const i = carrito.find(x => x.id === id); if(i){ i.cantidad += d; if(i.cantidad <= 0) carrito = carrito.filter(x => x.id !== id); guardar(); }};
+    window.del = (id) => { carrito = carrito.filter(x => x.id !== id); guardar(); };
+    function guardar() { carritoData.items = carrito; sessionStorage.setItem(carritoKey, JSON.stringify(carritoData)); renderCarrito(); }
+
+    // Eventos UI
     if(typeof marcador !== 'undefined'){
         marcador.on('dragend', function(e) {
-            const pos = e.target.getLatLng();
-            userLat = pos.lat; userLng = pos.lng;
-            actualizarTotalesEnvio();
+            const pos = e.target.getLatLng(); userLat = pos.lat; userLng = pos.lng; actualizarTotalesEnvio();
         });
     }
-
     const btnGps = document.getElementById('usar-gps-btn');
-    const gpsStatus = document.getElementById('gps-status');
-    const dirInput = document.getElementById('direccion'); // Corregido ID
-
     if(btnGps) {
         btnGps.addEventListener('click', function() {
             if (navigator.geolocation) {
-                gpsStatus.innerHTML = '<span class="spinner-border spinner-border-sm text-primary"></span> Buscando...';
+                document.getElementById('gps-status').innerHTML = '...';
                 navigator.geolocation.getCurrentPosition(pos => {
                     userLat = pos.coords.latitude; userLng = pos.coords.longitude;
-                    
-                    if(typeof mapa !== 'undefined') {
-                        mapa.setView([userLat, userLng], 16);
-                        marcador.setLatLng([userLat, userLng]);
-                    }
-                    
-                    dirInput.value = `Ubicación GPS (Lat: ${userLat.toFixed(4)}, Lon: ${userLng.toFixed(4)})`;
+                    if(mapa) { mapa.setView([userLat, userLng], 16); marcador.setLatLng([userLat, userLng]); }
+                    document.getElementById('direccion').value = `GPS (${userLat.toFixed(4)}, ${userLng.toFixed(4)})`;
                     actualizarTotalesEnvio();
-                    gpsStatus.innerHTML = '<span class="text-success fw-bold"><i class="bi bi-check-circle"></i> Ubicación actualizada</span>';
-                }, err => {
-                    gpsStatus.innerHTML = '<span class="text-danger">Error obteniendo ubicación.</span>';
-                }, { enableHighAccuracy: true });
+                    document.getElementById('gps-status').innerHTML = 'Ok';
+                });
             }
         });
     }
 
-    if(selectPago){
-        selectPago.addEventListener('change', function() {
-            containerYape.style.display = 'none';
-            divVuelto.style.display = 'none';
-            inputVuelto.removeAttribute('required');
-
-            if (this.value === 'yape') {
-                containerYape.style.display = 'block';
-                displayYapeNum.textContent = datosRestaurante.yapeNumero || "No registrado";
-                displayYapeQR.innerHTML = datosRestaurante.yapeQR ? 
-                    `<img src="assets/img/qr/${datosRestaurante.yapeQR}" class="img-fluid rounded border" style="max-width: 200px;">` : 
-                    '<span class="text-muted border p-2">Sin QR</span>';
-            } else if (this.value === 'efectivo') {
-                divVuelto.style.display = 'block';
-                inputVuelto.setAttribute('required', 'true');
-            }
-            validarBotonConfirmacion();
-        });
-    }
-
-    if(btnCopiar) {
-        btnCopiar.addEventListener('click', function() {
-            navigator.clipboard.writeText(displayYapeNum.textContent);
-            alert("Número copiado");
-        });
-    }
-
     // =========================================================
-    // 6. VALIDACIÓN Y MODAL
+    // 7. VALIDACIÓN (INCLUYENDO CHECKBOX PUERTA)
     // =========================================================
-    const inputYapeFile = document.getElementById('comprobante_yape');
-
     function validarBotonConfirmacion() {
-        if (!selectPago || !btnConfirmarInicial) return; 
+        if (!selectPago || !btnConfirmarInicial) return;
+        
+        let ok = true; 
+        let txt = 'Confirmar Pedido'; 
+        let cls = 'btn-primary';
 
-        if (selectPago.value === 'yape') {
-            if (inputYapeFile.files.length === 0) {
-                btnConfirmarInicial.disabled = true;
-                btnConfirmarInicial.innerHTML = '<i class="bi bi-camera-fill me-2"></i>Sube la captura para continuar';
-                btnConfirmarInicial.classList.remove('btn-primary');
-                btnConfirmarInicial.classList.add('btn-secondary');
-            } else {
-                btnConfirmarInicial.disabled = false;
-                btnConfirmarInicial.innerHTML = 'Confirmar Pedido';
-                btnConfirmarInicial.classList.remove('btn-secondary');
-                btnConfirmarInicial.classList.add('btn-primary');
-            }
-        } else {
-            btnConfirmarInicial.disabled = false;
-            btnConfirmarInicial.innerHTML = 'Confirmar Pedido';
-            btnConfirmarInicial.classList.remove('btn-secondary');
-            btnConfirmarInicial.classList.add('btn-primary');
+        // 1. Zona
+        if(!estaEnZona) { 
+            ok = false; 
+            txt = 'Fuera de Zona'; 
+            cls = 'btn-secondary'; 
         }
+        // 2. Puerta (NUEVO)
+        else if (checkPuerta && !checkPuerta.checked) {
+            ok = false;
+            txt = 'Acepta entrega en puerta';
+            cls = 'btn-secondary';
+        }
+        // 3. Yape
+        else if (selectPago.value === 'yape' && (!inputYapeFile.files || inputYapeFile.files.length === 0)) {
+            ok = false; 
+            txt = 'Falta captura de pago'; 
+            cls = 'btn-secondary';
+        }
+
+        btnConfirmarInicial.disabled = !ok;
+        btnConfirmarInicial.innerHTML = txt;
+        btnConfirmarInicial.className = `btn btn-lg w-100 ${cls} btn-confirm-order`;
     }
 
-    if(inputYapeFile){
-        inputYapeFile.addEventListener('change', validarBotonConfirmacion);
-    }
+    // Listeners de validación
+    if(selectPago) selectPago.addEventListener('change', function() {
+        containerYape.style.display = (this.value === 'yape') ? 'block' : 'none';
+        divVuelto.style.display = (this.value === 'efectivo') ? 'block' : 'none';
+        if(this.value === 'yape') {
+            displayYapeNum.textContent = datosRestaurante.yapeNumero || "--";
+            displayYapeQR.innerHTML = datosRestaurante.yapeQR ? `<img src="assets/img/qr/${datosRestaurante.yapeQR}" class="img-fluid" style="max-width:150px">` : 'Sin QR';
+        }
+        validarBotonConfirmacion();
+    });
+    
+    if(inputYapeFile) inputYapeFile.addEventListener('change', validarBotonConfirmacion);
+    if(checkPuerta) checkPuerta.addEventListener('change', validarBotonConfirmacion); // ESCUCHA EL CHECKBOX
+    if(btnCopiar) btnCopiar.addEventListener('click', () => { navigator.clipboard.writeText(displayYapeNum.textContent); alert("Copiado"); });
 
-    if(btnConfirmarInicial){
+    // Enviar
+    if(btnConfirmarInicial) {
         btnConfirmarInicial.addEventListener('click', function(e) {
-            e.preventDefault(); 
+            e.preventDefault();
+            if(!document.getElementById('direccion').value.trim() || !selectPago.value) return alert("Faltan datos");
+            if(selectPago.value === 'efectivo' && !inputVuelto.value) return alert("Indica con cuánto pagas");
+            if(!estaEnZona) return alert("Zona prohibida");
 
-            // Validaciones
-            const direccion = document.getElementById('direccion').value;
-            const pago = selectPago.value;
-            
-            if (direccion.trim() === "" || pago === "") {
-                alert("Por favor completa la dirección y el método de pago.");
-                return;
-            }
-            if (pago === 'efectivo' && inputVuelto.value === "") {
-                alert("Ingresa con cuánto vas a pagar.");
-                return;
-            }
-
-            // Llenar Modal
-            const costoEnvio = actualizarTotalesEnvio();
-            let subtotal = 0;
-            const listaItems = document.getElementById('boleta-items');
-            listaItems.innerHTML = ''; 
-
-            carrito.forEach(item => {
-                const totalItem = item.precio * item.cantidad;
-                subtotal += totalItem;
-                const li = document.createElement('li');
-                li.className = 'list-group-item d-flex justify-content-between align-items-center bg-transparent px-0 py-1';
-                li.innerHTML = `<span class="small text-muted">${item.cantidad} x ${item.nombre}</span><span class="small">S/ ${totalItem.toFixed(2)}</span>`;
-                listaItems.appendChild(li);
+            // Modal Resumen
+            const lista = document.getElementById('boleta-items'); lista.innerHTML = '';
+            let sub = 0;
+            carrito.forEach(i => {
+                sub += i.precio * i.cantidad;
+                lista.innerHTML += `<li class="list-group-item d-flex justify-content-between px-0 py-1"><small>${i.cantidad} x ${i.nombre}</small><small>S/ ${(i.precio*i.cantidad).toFixed(2)}</small></li>`;
             });
-
-            document.getElementById('boleta-direccion').textContent = direccion;
-            document.getElementById('boleta-subtotal').textContent = `S/ ${subtotal.toFixed(2)}`;
-            document.getElementById('boleta-envio').textContent = `S/ ${costoEnvio.toFixed(2)}`;
-            document.getElementById('boleta-total').textContent = `S/ ${(subtotal + costoEnvio).toFixed(2)}`;
             
-            let textoPago = pago === 'yape' ? 'Yape / Plin' : `Efectivo (Paga con S/${inputVuelto.value})`;
-            document.getElementById('boleta-metodo').textContent = textoPago;
-
+            // Badges en Modal
+            let badgesModal = '';
+            if(ES_MODO_LLUVIA) badgesModal += ' <span class="badge bg-warning text-dark">Lluvia</span>';
+            if(esCargaPesada) badgesModal += ' <span class="badge bg-dark">Pesado</span>';
+            
+            document.getElementById('boleta-direccion').textContent = document.getElementById('direccion').value;
+            document.getElementById('boleta-subtotal').textContent = `S/ ${sub.toFixed(2)}`;
+            document.getElementById('boleta-envio').textContent = `S/ ${costoEnvioActual.toFixed(2)}`;
+            if(document.getElementById('boleta-badges')) document.getElementById('boleta-badges').innerHTML = badgesModal;
+            document.getElementById('boleta-total').textContent = `S/ ${(sub+costoEnvioActual).toFixed(2)}`;
+            document.getElementById('boleta-metodo').textContent = selectPago.value;
+            
             modalBoleta.show();
         });
     }
-    
-    if(btnEnviarFinal){
+    if(btnEnviarFinal) {
         btnEnviarFinal.addEventListener('click', function() {
-            this.disabled = true;
-            this.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Enviando...';
+            this.disabled = true; this.innerHTML = 'Enviando...';
             checkoutForm.submit();
         });
     }
 
-    // Iniciar
     renderCarrito();
-    validarBotonConfirmacion();
     
-    if(typeof mapa !== 'undefined') {
-        setTimeout(() => { mapa.invalidateSize(); }, 500);
+    // Popup Lluvia
+    if (ES_MODO_LLUVIA) {
+        const modalHtml = `<div class="modal fade" id="modalLluviaAlerta" tabindex="-1"><div class="modal-dialog modal-dialog-centered"><div class="modal-content border-warning"><div class="modal-header bg-warning text-dark border-0"><h5 class="modal-title fw-bold">🌧️ ¡Lluvia Fuerte!</h5></div><div class="modal-body text-center"><p>Tarifa dinámica activa por seguridad.</p><h2 class="badge bg-danger fs-3">+ S/ ${RECARGO_LLUVIA.toFixed(2)}</h2></div><div class="modal-footer justify-content-center border-0"><button type="button" class="btn btn-dark btn-sm px-4" data-bs-dismiss="modal">Entendido</button></div></div></div></div>`;
+        document.body.insertAdjacentHTML('beforeend', modalHtml);
+        new bootstrap.Modal(document.getElementById('modalLluviaAlerta')).show();
     }
+    
+    if (typeof mapa !== 'undefined') setTimeout(() => mapa.invalidateSize(), 500);
 });
 </script>
 <?php include 'includes/footer.php'; ?>

@@ -1,6 +1,6 @@
 <?php
 session_start();
-// El "guardia de seguridad" (Sin cambios)
+// El "guardia de seguridad"
 if (!isset($_SESSION['admin_logged_in']) || $_SESSION['admin_logged_in'] !== true) {
     header("Location: login.php");
     exit;
@@ -8,24 +8,48 @@ if (!isset($_SESSION['admin_logged_in']) || $_SESSION['admin_logged_in'] !== tru
 
 require_once '../includes/conexion.php';
 
-// Consulta para RESTAURANTES (Sin cambios)
+// Consulta para RESTAURANTES
 $sql_restaurantes = "SELECT id, nombre_restaurante, email, estado, fecha_vencimiento_suscripcion FROM restaurantes ORDER BY fecha_registro DESC";
 $resultado_restaurantes = $conn->query($sql_restaurantes);
 
-// CONSULTA PARA REPARTIDORES PENDIENTES (Sin cambios)
+// CONSULTA PARA REPARTIDORES PENDIENTES
 $sql_repartidores = "SELECT id, nombre, email, telefono FROM repartidores WHERE estado_aprobacion = 'pendiente' ORDER BY id ASC";
 $resultado_repartidores = $conn->query($sql_repartidores);
 
-// Incluimos el header que ya tiene los estilos
+// Verificar estado actual del Modo Lluvia para mostrar el switch correctamente
+// Asegúrate de haber creado la tabla 'configuracion'
+$estado_lluvia = '0';
+$check_lluvia = $conn->query("SELECT valor FROM configuracion WHERE clave = 'modo_lluvia'");
+if ($check_lluvia && $row = $check_lluvia->fetch_assoc()) {
+    $estado_lluvia = $row['valor'];
+}
+
 include '../includes/header.php';
 ?>
 
-<div class="dashboard-header d-flex justify-content-between align-items-center">
+<div class="dashboard-header d-flex justify-content-between align-items-center mb-4">
     <div>
         <h2 class="h3">Panel de Administración</h2>
         <p class="text-muted mb-0">Gestión de la plataforma CerroDelivery.</p>
     </div>
     <a href="../procesos/logout_admin.php" class="btn btn-outline-danger">Cerrar Sesión</a>
+</div>
+
+<div class="card mb-4 border-primary shadow-sm">
+    <div class="card-body d-flex justify-content-between align-items-center bg-light rounded">
+        <div>
+            <h5 class="mb-1 fw-bold text-primary"><i class="bi bi-cloud-lightning-rain-fill me-2"></i>Modo Tormenta / Lluvia</h5>
+            <p class="mb-0 small text-muted">Al activar esto, se cobrará un <strong>recargo extra</strong> a todos los envíos para compensar a los motorizados.</p>
+        </div>
+        <div class="form-check form-switch text-center">
+            <input class="form-check-input" type="checkbox" id="switchLluvia" style="width: 3.5em; height: 1.8em; cursor: pointer;" 
+                <?php echo ($estado_lluvia == '1') ? 'checked' : ''; ?> onchange="cambiarModoLluvia(this)">
+            <br>
+            <label class="form-check-label fw-bold mt-1" for="switchLluvia" id="textoSwitch">
+                <?php echo ($estado_lluvia == '1') ? '<span class="text-success">ACTIVADO</span>' : '<span class="text-muted">Desactivado</span>'; ?>
+            </label>
+        </div>
+    </div>
 </div>
 
 <div class="card dashboard-card mb-4">
@@ -110,6 +134,47 @@ include '../includes/header.php';
         </div>
     </div>
 </div>
+
+<script>
+function cambiarModoLluvia(checkbox) {
+    const estado = checkbox.checked ? '1' : '0';
+    const label = document.getElementById('textoSwitch');
+    
+    // Feedback visual inmediato
+    label.innerHTML = '<span class="text-warning">Guardando...</span>';
+    checkbox.disabled = true;
+    
+    const formData = new FormData();
+    formData.append('estado', estado);
+
+    fetch('cambiar_estado_lluvia.php', {
+        method: 'POST',
+        body: formData
+    })
+    .then(res => res.json())
+    .then(data => {
+        checkbox.disabled = false;
+        if(data.status === 'success') {
+            if(estado === '1') {
+                label.innerHTML = '<span class="text-success">ACTIVADO</span>';
+                // Opcional: Sonido o alerta
+            } else {
+                label.innerHTML = '<span class="text-muted">Desactivado</span>';
+            }
+        } else {
+            alert("Error: " + data.msg);
+            checkbox.checked = !checkbox.checked; // Revertir cambio
+            label.innerHTML = 'Error';
+        }
+    })
+    .catch(err => {
+        console.error(err);
+        alert("Error de conexión");
+        checkbox.disabled = false;
+        checkbox.checked = !checkbox.checked;
+    });
+}
+</script>
 
 <?php 
 $conn->close();
