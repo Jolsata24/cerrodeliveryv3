@@ -1,0 +1,1 @@
+[30-Jan-2026 16:47:34 America/Mexico_City] PHP Warning:  Cannot modify header information - headers already sent by (output started at /home3/herework/public_html/includes/conexion.php:28) in /home3/herework/public_html/procesos/procesar_login_cliente.php on line 26

@@ -1,0 +1,115 @@
+/* ===================================== */
+/* ESTILOS EXCLUSIVOS PARA REPARTIDOR/MIS_ENTREGAS.PHP */
+/* ===================================== */
+
+/* --- 1. PREPARACIÓN: HEADER TRANSPARENTE --- */
+.navbar.sticky-top {
+    background-color: transparent !important;
+    box-shadow: none !important;
+    position: fixed;
+    width: 100%;
+    z-index: 100;
+    transition: background-color 0.3s ease;
+}
+
+.navbar.sticky-top.navbar-scrolled {
+    background: #103652f5 !important;
+    box-shadow: 0 2px 20px rgba(0,0,0,0.1) !important;
+}
+.navbar.sticky-top .nav-link,
+.navbar.sticky-top .dropdown-toggle {
+    color: #ffffff !important;
+    text-shadow: 0 1px 2px rgba(0,0,0,0.3);
+}
+.navbar.sticky-top .dropdown-menu .dropdown-item {
+    color: #212529 !important; 
+    text-shadow: none;
+}
+.navbar.sticky-top .btn-outline-secondary {
+    background-color: rgba(255,255,255,0.2);
+    border-color: #ffffff;
+    color: #ffffff;
+}
+ .navbar.sticky-top .btn-primary {
+    background-color: #ffffff;
+    border-color: #ffffff;
+    color: #0d6efd;
+}
+body > main.container.mt-4 {
+    margin-top: 0 !important;
+    padding-top: 0 !important;
+    max-width: 100%;
+    padding-left: 0;
+    padding-right: 0;
+}
+
+/* --- 2. ESTILOS DEL HERO (CON IMAGEN DE REPARTIDOR) --- */
+.hero-quickbite {
+    /* Alinear verticalmente */
+    display: flex;
+    align-items: center;
+    min-height: 50vh; /* Un hero más corto para un dashboard */
+    
+    /* Imagen de fondo */
+    background-image: url('/cerrodeliveryv2/assets/img/repartidor.jpg');
+    background-size: cover;
+    background-position: center center;
+    
+    color: #ffffff;
+    position: relative;
+    padding-bottom: 80px;    
+    box-sizing: border-box;
+}
+
+/* Capa oscura sobre la imagen para que el texto sea legible */
+.hero-quickbite::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background-color: rgba(0, 0, 0, 0.55);
+    z-index: 1;
+}
+
+.hero-quickbite .container {
+    padding-top: 60px; /* Espacio para el header fijo */
+}
+
+.hero-quickbite .hero-text {
+    position: relative;
+    z-index: 2; /* Texto delante de la capa oscura */
+}
+.hero-quickbite .hero-text h1 {
+    font-weight: 800;
+    text-shadow: 0 2px 4px rgba(0,0,0,0.3);
+}
+.hero-quickbite .hero-text .lead {
+    color: #edf2f4;
+    font-size: 1.25rem;
+}
+
+/* --- 3. TARJETA SUPERPUESTA --- */
+.main-content-overlay {
+    background-color: #ffffff; 
+    position: relative;
+    border-radius: 1.5rem 1.5rem 0 0;
+    padding: 3rem 0;
+    box-shadow: 0 -10px 30px rgba(0, 0, 0, 0.1);
+    margin-top: -80px; 
+    z-index: 2;
+}
+
+/* --- 4. RESPONSIVIDAD --- */
+@media (max-width: 991px) {
+    .hero-quickbite {
+        padding-top: 100px;
+        min-height: 40vh;
+        padding-bottom: 6rem;
+    }
+    .main-content-overlay {
+        margin-top: -50px;
+        padding: 2rem 0;
+    }
+    .hero-quickbite .hero-text h1 {
+        font-size: 2.5rem;
+    }
+}
