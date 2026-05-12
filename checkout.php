@@ -478,41 +478,23 @@ document.addEventListener('DOMContentLoaded', function() {
         let totalPuntos = 0;
         carrito.forEach(item => { totalPuntos += calcularPuntosVolumen(item.nombre) * item.cantidad; });
         esCargaPesada = (totalPuntos > CAPACIDAD_MOCHILA);
-        console.log(`📦 Puntos: ${totalPuntos}`);
 
-        try {
-            // 2. Calcular Distancia Real (OSRM)
-            const url = `https://router.project-osrm.org/route/v1/driving/${datosRestaurante.lon},${datosRestaurante.lat};${clienteLon},${clienteLat}?overview=false`;
-            const response = await fetch(url);
-            const data = await response.json();
-            let distanciaKm = 0;
+        // 2. CÁLCULO INSTANTÁNEO (Factor de Curvatura para Pasco)
+        let distanciaLineal = calcularDistanciaLineal(clienteLat, clienteLon);
+        // Multiplicamos por 1.4 para simular la distancia real por carreteras/subidas
+        let distanciaKm = distanciaLineal * 1.4; 
 
-            if (data.code !== 'Ok' || !data.routes || data.routes.length === 0) {
-                distanciaKm = calcularDistanciaLineal(clienteLat, clienteLon);
-            } else {
-                distanciaKm = data.routes[0].distance / 1000;
-            }
-
-            // 3. Tarifa Base
-            let costo = 5.00; 
-            if (distanciaKm > 1.5) { 
-                costo += (distanciaKm - 1.5) * 1.50; 
-            }
-
-            // 4. Recargos
-            if (ES_MODO_LLUVIA) costo += RECARGO_LLUVIA;
-            if (esCargaPesada) costo += RECARGO_CARGA_PESADA;
-
-            return Math.round(costo * 10) / 10;
-
-        } catch (error) {
-            console.error("Error ruta:", error);
-            // Fallback
-            let costo = 5.00;
-            if(ES_MODO_LLUVIA) costo += RECARGO_LLUVIA;
-            if(esCargaPesada) costo += RECARGO_CARGA_PESADA;
-            return costo;
+        // 3. Tarifa Base
+        let costo = 5.00; 
+        if (distanciaKm > 1.5) { 
+            costo += (distanciaKm - 1.5) * 1.50; 
         }
+
+        // 4. Recargos
+        if (ES_MODO_LLUVIA) costo += RECARGO_LLUVIA;
+        if (esCargaPesada) costo += RECARGO_CARGA_PESADA;
+
+        return Math.round(costo * 10) / 10;
     }
 
     function calcularDistanciaLineal(lat1, lon1) {
@@ -616,9 +598,37 @@ document.addEventListener('DOMContentLoaded', function() {
     function guardar() { carritoData.items = carrito; sessionStorage.setItem(carritoKey, JSON.stringify(carritoData)); renderCarrito(); }
 
     // Eventos UI
+    // ==========================================
+    // Eventos UI
+    // ==========================================
+    
+    // Variable global para evitar que se sature el servidor (Debounce)
+    let temporizadorRuta;
+
     if(typeof marcador !== 'undefined'){
         marcador.on('dragend', function(e) {
-            const pos = e.target.getLatLng(); userLat = pos.lat; userLng = pos.lng; actualizarTotalesEnvio();
+            const pos = e.target.getLatLng(); 
+            userLat = pos.lat; 
+            userLng = pos.lng; 
+            
+            // 1. Mostrar visualmente que está calculando (Feedback visual)
+            const celdaTotal = document.getElementById('celda-total-final');
+            if (celdaTotal) {
+                celdaTotal.innerHTML = '<span class="spinner-border spinner-border-sm text-primary" role="status"></span> <span class="small text-muted">Calculando...</span>';
+            }
+            
+            if(btnConfirmarInicial) {
+                btnConfirmarInicial.disabled = true;
+                btnConfirmarInicial.innerHTML = '<span class="spinner-border spinner-border-sm me-2" role="status"></span>Calculando ruta exacta...';
+            }
+
+            // 2. Limpiar el contador si el usuario sigue moviendo el pin rápido
+            clearTimeout(temporizadorRuta);
+
+            // 3. Esperar 800 milisegundos una vez que suelta el pin para calcular
+            temporizadorRuta = setTimeout(() => {
+                actualizarTotalesEnvio();
+            }, 300);
         });
     }
     const btnGps = document.getElementById('usar-gps-btn');
