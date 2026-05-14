@@ -43,7 +43,8 @@ document.addEventListener('DOMContentLoaded', function() {
     const container = document.getElementById('historial-pedidos-container');
 
     const cargarHistorial = () => {
-        fetch('ajax_cargar_mis_pedidos.php')
+        // TRUCO ANTI-CACHÉ: Le agregamos la hora exacta (?t=...) y le decimos al navegador que no guarde el resultado ({cache: 'no-store'})
+        fetch('ajax_cargar_mis_pedidos.php?t=' + new Date().getTime(), { cache: 'no-store' })
             .then(response => response.text())
             .then(html => {
                 container.innerHTML = html;
@@ -55,4 +56,4 @@ document.addEventListener('DOMContentLoaded', function() {
     cargarHistorial();
     setInterval(cargarHistorial, 7000);
 });
-</script>   
+</script>  
