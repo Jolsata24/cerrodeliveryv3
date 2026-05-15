@@ -39,57 +39,19 @@ include '../includes/footer.php';
 document.addEventListener('DOMContentLoaded', function() {
     const container = document.getElementById('pedidos-container');
 
-    // 1. SOLUCIÓN Z-INDEX: Mover modal al body al abrir y devolverlo al cerrar
-    // Esto evita que la pantalla se ponga gris encima de la foto
-    document.addEventListener('show.bs.modal', function (event) {
-        const modal = event.target;
-        document.body.appendChild(modal); // Lo mueve al final del body (capa superior)
-    });
-
-    document.addEventListener('hidden.bs.modal', function (event) {
-        const modal = event.target;
-        // Lo devolvemos al contenedor original para que el sistema de actualización
-        // pueda borrarlo correctamente cuando refresque la lista.
-        if(container) {
-            container.appendChild(modal); 
-        }
-    });
-
-    // 2. CARGA DE SOLICITUDES (Repartidores)
-    const cargarSolicitudes = () => {
-        const contenedoresSolicitudes = document.querySelectorAll('.solicitudes-container');
-        contenedoresSolicitudes.forEach(contenedor => {
-            const idPedido = contenedor.dataset.idPedido;
-            if (idPedido) {
-                fetch(`ajax_cargar_solicitudes.php?id_pedido=${idPedido}`)
-                    .then(response => response.text())
-                    .then(html => { contenedor.innerHTML = html; })
-                    .catch(error => console.error('Error solicitudes:', error));
-            }
-        });
-    };
-
-    // 3. CARGA DE PEDIDOS (Con pausa inteligente)
     const cargarPedidos = () => {
-        // Si hay una foto abierta, NO actualizamos nada para no cerrarla en la cara
-        if (document.querySelector('.modal.show')) {
-            console.log("Actualización pausada: Usuario viendo foto.");
-            return; 
-        }
-
         fetch('ajax_cargar_pedidos.php')
             .then(response => response.text())
             .then(html => {
                 container.innerHTML = html;
-                cargarSolicitudes(); 
             })
             .catch(error => {
-                console.error('Error pedidos:', error);
+                console.error('Error al cargar pedidos:', error);
             });
     };
 
-    // Iniciar
+    // Cargar inmediatamente y luego cada 5 segundos
     cargarPedidos();
-    setInterval(cargarPedidos, 6000);
+    setInterval(cargarPedidos, 5000);
 });
 </script>

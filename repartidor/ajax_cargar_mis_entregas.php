@@ -1,18 +1,23 @@
 <?php
 session_start();
 require_once '../includes/conexion.php';
+
 if (!isset($_SESSION['repartidor_id'])) { die(); }
 $id_repartidor = $_SESSION['repartidor_id'];
 
-// CORRECCIÓN 1: Traemos todos los estados activos (En preparación, Listo, En camino)
-// Además, añadimos el monto_total y costo_envio por si acaso.
-$sql = "SELECT p.id, p.direccion_pedido, p.latitud, p.longitud, p.estado_pedido, p.monto_total, p.costo_envio,
-               c.nombre as nombre_cliente, c.telefono as telefono_cliente, 
-               r.nombre_restaurante, r.direccion as direccion_restaurante
+// CORRECCIÓN APLICADA: Ahora hacemos el JOIN con "usuarios_clientes" en lugar de "clientes"
+$sql = "SELECT p.id, p.fecha_pedido, p.monto_total, p.costo_envio, p.estado_pedido, 
+               p.direccion_pedido, p.referencia, p.telefono_pedido, p.metodo_pago,
+               p.latitud, p.longitud,
+               r.nombre_restaurante, r.direccion as direccion_restaurante,
+               r.telefono as telefono_restaurante,
+               c.nombre as nombre_cliente
         FROM pedidos p
         JOIN restaurantes r ON p.id_restaurante = r.id
-        JOIN usuarios_clientes c ON p.id_cliente = c.id
-        WHERE p.id_repartidor = ? AND p.estado_pedido IN ('En preparación', 'Listo para recoger', 'En camino')";
+        LEFT JOIN usuarios_clientes c ON p.id_cliente = c.id
+        WHERE p.id_repartidor = ? AND p.estado_pedido IN ('En preparación', 'Listo para recoger', 'En camino')
+        ORDER BY p.fecha_pedido ASC";
+        
 $stmt = $conn->prepare($sql);
 $stmt->bind_param("i", $id_repartidor);
 $stmt->execute();
@@ -31,11 +36,17 @@ $resultado_entregas = $stmt->get_result();
             <div class="card-body">
                 <div class="route-info mb-4">
                     <div class="route-point pickup mb-3">
-                        <i class="bi bi-shop text-primary fs-4"></i>
-                        <div class="ms-3">
-                            <small class="text-muted">RECOGER EN</small><br>
+                        <i class="bi bi-shop text-primary"></i>
+                        <div>
+                            <small class="text-muted">RECOGER EN:</small><br>
                             <strong><?php echo htmlspecialchars($entrega['nombre_restaurante']); ?></strong><br>
-                            <small><?php echo htmlspecialchars($entrega['direccion_restaurante']); ?></small>
+                            <small><?php echo htmlspecialchars($entrega['direccion_restaurante']); ?></small><br>
+                            
+                            <?php if (!empty($entrega['telefono_restaurante'])): ?>
+                                <a href="tel:<?php echo $entrega['telefono_restaurante']; ?>" class="btn btn-sm btn-success mt-2 fw-bold">
+                                    <i class="bi bi-telephone-fill me-1"></i> Llamar Restaurante
+                                </a>
+                            <?php endif; ?>
                         </div>
                     </div>
                     
@@ -43,19 +54,19 @@ $resultado_entregas = $stmt->get_result();
                         <i class="bi bi-house-door-fill text-success fs-4"></i>
                         <div class="ms-3">
                             <small class="text-muted">ENTREGAR A</small><br>
-                            <strong><?php echo htmlspecialchars($entrega['nombre_cliente']); ?></strong><br>
+                            <strong><?php echo htmlspecialchars($entrega['nombre_cliente'] ?? 'Cliente'); ?></strong><br>
                             <span class="d-block text-muted small"><?php echo htmlspecialchars($entrega['direccion_pedido']); ?></span>
                         </div>
                     </div>
                 </div>
                 
                 <div class="d-grid gap-2">
-                    <a href="https://wa.me/51<?php echo htmlspecialchars($entrega['telefono_cliente']); ?>?text=Hola, soy tu repartidor de CerroDelivery. Te escribo por tu pedido #<?php echo $entrega['id']; ?>." target="_blank" class="btn btn-outline-success fw-bold">
+                    <a href="https://wa.me/51<?php echo htmlspecialchars($entrega['telefono_pedido']); ?>?text=Hola, soy tu repartidor de CerroDelivery. Te escribo por tu pedido #<?php echo $entrega['id']; ?>." target="_blank" class="btn btn-outline-success fw-bold">
                         <i class="bi bi-whatsapp me-2"></i>Contactar Cliente
                     </a>
                     
                     <?php if (!empty($entrega['latitud']) && !empty($entrega['longitud'])): ?>
-                        <a href="https://www.google.com/maps/dir/?api=1&destination=<?php echo $entrega['latitud']; ?>,<?php echo $entrega['longitud']; ?>" target="_blank" class="btn btn-outline-primary fw-bold">
+                        <a href="https://www.google.com/maps/search/?api=1&query=<?php echo $entrega['latitud']; ?>,<?php echo $entrega['longitud']; ?>" target="_blank" class="btn btn-outline-primary fw-bold">
                             <i class="bi bi-geo-alt-fill me-2"></i>Ir con GPS (Google Maps)
                         </a>
                     <?php else: ?>

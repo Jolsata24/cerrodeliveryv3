@@ -38,17 +38,17 @@ if ($resultado_pedidos->num_rows > 0):
                 break;
             case 'En preparación':
                 $progreso = 40;
-                $estado_actual = '¡Pedido Confirmado! El restaurante ya está preparando tu comida.'; 
+                $estado_actual = '¡Pedido Confirmado! El repartidor se dirigue al restaurante'; 
                 $estado_clase = 'info';
                 break;
             case 'Listo para recoger':
                 $progreso = 65;
-                $estado_actual = 'Comida lista. Tu repartidor la está recogiendo.';
+                $estado_actual = 'Comida lista. Tu repartidor realizo el pedido.';
                  $estado_clase = 'warning';
                 break;
             case 'En camino':
                 $progreso = 85;
-                $estado_actual = '¡Tu repartidor está en ruta hacia tu dirección!';
+                $estado_actual = '¡Pedido listo, tu repartidor está en ruta hacia tu dirección!';
                 $estado_clase = 'primary';
                 break;
             case 'Entregado':

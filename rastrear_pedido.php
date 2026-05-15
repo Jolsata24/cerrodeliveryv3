@@ -9,7 +9,6 @@ require_once 'includes/conexion.php';
 $id_pedido = $_GET['id_pedido'];
 $id_cliente_sesion = $_SESSION['cliente_id'];
 
-// --- CONSULTA (SIN CAMBIOS) ---
 $sql = "SELECT 
             p.latitud as latitud_cliente, 
             p.longitud as longitud_cliente, 
@@ -36,13 +35,11 @@ if ($resultado->num_rows == 0) {
 $pedido = $resultado->fetch_assoc();
 $id_repartidor = $pedido['id_repartidor'];
 
-if (is_null($id_repartidor)) {
-    header('Location: mis_pedidos.php?error=no_repartidor');
-    exit();
-}
+// ELIMINADA LA RESTRICCIÓN QUE REDIRIGÍA A MIS_PEDIDOS
+// if (is_null($id_repartidor)) { ... } 
 
-// Variables para el nuevo diseño (SIN CAMBIOS)
-$nombre_repartidor = $pedido['nombre_repartidor'] ?? 'Repartidor Asignado';
+// Variables para el diseño
+$nombre_repartidor = $pedido['nombre_repartidor'] ?? 'Buscando repartidor...';
 $estado_pedido = $pedido['estado_pedido'];
 $direccion_restaurante = $pedido['direccion_restaurante'];
 $direccion_cliente = $pedido['direccion_pedido'];
@@ -50,68 +47,101 @@ $direccion_cliente = $pedido['direccion_pedido'];
 include 'includes/header.php';
 ?>
 
-<!-- 
-  Enlaces de Leaflet.js
-  Los mantenemos aquí (en el body) como en tu archivo original.
--->
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 
-<!-- === INICIO DE LA MODIFICACIÓN ESTRUCTURAL === -->
+<style>
+    .pin-repartidor {
+        background-color: #198754; 
+        color: white;
+        width: 45px;
+        height: 45px;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        border: 3px solid white;
+        box-shadow: 0 0 15px rgba(25, 135, 84, 0.6);
+        animation: pulse-pin 1.5s infinite;
+    }
+    
+    .pin-casa {
+        background-color: #dc3545; 
+        color: white;
+        width: 45px;
+        height: 45px;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        border: 3px solid white;
+        box-shadow: 0 4px 8px rgba(0,0,0,0.3);
+    }
+    
+    @keyframes pulse-pin {
+        0% { box-shadow: 0 0 0 0 rgba(25, 135, 84, 0.7); }
+        70% { box-shadow: 0 0 0 15px rgba(25, 135, 84, 0); }
+        100% { box-shadow: 0 0 0 0 rgba(25, 135, 84, 0); }
+    }
+</style>
 
-<!-- 1. NUEVO HERO SECTION -->
 <div class="hero-quickbite">
     <div class="container hero-text">
         <div class="dashboard-header d-flex flex-wrap justify-content-between align-items-center mb-4">
             <div>
                 <h1 class="display-5 fw-bold">Rastreando Pedido #<?php echo $id_pedido; ?></h1>
-                <p class="lead text-white-50 mb-0"><?php echo htmlspecialchars($nombre_repartidor); ?> está en camino con tu comida.</p>
+                <?php if (is_null($id_repartidor)): ?>
+                    <p class="lead text-warning mb-0"><i class="bi bi-hourglass-split me-2"></i>Esperando que un motorizado acepte tu pedido...</p>
+                <?php else: ?>
+                    <p class="lead text-white-50 mb-0"><?php echo htmlspecialchars($nombre_repartidor); ?> está asignado a tu entrega.</p>
+                <?php endif; ?>
             </div>
-            <!-- Botón para volver a Mis Pedidos -->
             <a href="mis_pedidos.php" class="btn btn-outline-light mt-3 mt-md-0"><i class="bi bi-arrow-left me-2"></i>Volver a Mis Pedidos</a>
         </div>
     </div>
 </div>
 
-<!-- 2. NUEVO MAIN CONTENT OVERLAY -->
 <div class="main-content-overlay">
     <div class="container">
-        
-        <!-- 
-          El contenido original (el .row) se mueve aquí dentro.
-          He quitado el div.container y el botón "Seguir Comprando"
-          que estaban en tu archivo original, ya que ahora están en el hero.
-        -->
         <div class="row g-4">
-            
             <div class="col-lg-5">
                 <div class="card tracking-info-card h-100">
                     <div class="card-body">
-                        <!-- Contenido de la tarjeta de estado (SIN CAMBIOS) -->
+                        
                         <div class="d-flex align-items-center mb-4">
-                            <img src="https://via.placeholder.com/60/007bff/ffffff?text=<?php echo substr($nombre_repartidor, 0, 1); ?>" alt="repartidor" class="rounded-circle me-3">
-                            <div>
-                                <h5 class="mb-0"><?php echo htmlspecialchars($nombre_repartidor); ?></h5>
-                                <p class="text-muted mb-0">Está en camino con tu pedido.</p>
-                            </div>
+                            <?php if (is_null($id_repartidor)): ?>
+                                <div class="bg-warning text-dark rounded-circle d-flex align-items-center justify-content-center me-3" style="width: 60px; height: 60px;">
+                                    <i class="bi bi-search fs-3"></i>
+                                </div>
+                                <div>
+                                    <h5 class="mb-0">Buscando motorizado</h5>
+                                    <p class="text-muted mb-0">Por favor, espera un momento.</p>
+                                </div>
+                            <?php else: ?>
+                                <img src="https://via.placeholder.com/60/198754/ffffff?text=<?php echo substr($nombre_repartidor, 0, 1); ?>" alt="repartidor" class="rounded-circle me-3">
+                                <div>
+                                    <h5 class="mb-0"><?php echo htmlspecialchars($nombre_repartidor); ?></h5>
+                                    <p class="text-success fw-bold mb-0">Repartidor Asignado</p>
+                                </div>
+                            <?php endif; ?>
                         </div>
                         
                         <ul class="tracking-steps">
-                            <li class="step-item <?php echo ($estado_pedido == 'En preparación') ? 'active' : 'completed'; ?>">
-                                <div class="step-icon">📦</div>
+                            <li class="step-item <?php echo ($estado_pedido == 'Pendiente') ? 'active' : 'completed'; ?>">
+                                <div class="step-icon">🕒</div>
+                                <div class="step-label">Pendiente</div>
+                            </li>
+                            <li class="step-item <?php echo ($estado_pedido == 'En preparación') ? 'active' : (in_array($estado_pedido, ['Listo para recoger', 'En camino', 'Entregado']) ? 'completed' : ''); ?>">
+                                <div class="step-icon">🍳</div>
                                 <div class="step-label">En preparación</div>
                             </li>
-                            <li class="step-item <?php echo ($estado_pedido == 'Listo para recoger') ? 'active' : 'completed'; ?>">
+                            <li class="step-item <?php echo ($estado_pedido == 'Listo para recoger') ? 'active' : (in_array($estado_pedido, ['En camino', 'Entregado']) ? 'completed' : ''); ?>">
                                 <div class="step-icon">🛍️</div>
                                 <div class="step-label">Listo para recoger</div>
                             </li>
-                            <li class="step-item <?php echo ($estado_pedido == 'En camino') ? 'active' : 'completed'; ?>">
+                            <li class="step-item <?php echo ($estado_pedido == 'En camino') ? 'active' : ($estado_pedido == 'Entregado' ? 'completed' : ''); ?>">
                                 <div class="step-icon">🛵</div>
                                 <div class="step-label">En camino</div>
-                            </li>
-                            <li class="step-item">
-                                <div class="step-icon">🏠</div>
-                                <div class="step-label">Entregado</div>
                             </li>
                         </ul>
                         
@@ -133,89 +163,74 @@ include 'includes/header.php';
             <div class="col-lg-7">
                 <div id="mapa" class="shadow-sm" style="height: 600px; border-radius: 0.75rem;"></div>
             </div>
-            
         </div>
-        <!-- Fin del contenido original -->
-        
     </div>
 </div>
-<!-- === FIN DE LA MODIFICACIÓN ESTRUCTURAL === -->
 
-
-<!-- 
-  SCRIPT DE LEAFLET (SIN CAMBIOS)
-  Funciona igual porque el ID 'mapa' se conserva.
--->
 <script>
 document.addEventListener('DOMContentLoaded', function() {
-    // Coordenadas del cliente (si las proporcionó)
     const latCliente = <?php echo $pedido['latitud_cliente'] ?? 'null'; ?>;
     const lonCliente = <?php echo $pedido['longitud_cliente'] ?? 'null'; ?>;
-    const idRepartidor = <?php echo $id_repartidor; ?>;
+    const idRepartidor = <?php echo $id_repartidor ? $id_repartidor : 'null'; ?>;
 
-    // Centrar el mapa en la ubicación del cliente o en una ubicación por defecto
-    const centroMapa = (latCliente && lonCliente) ? [latCliente, lonCliente] : [-12.046374, -77.042793]; // Coordenadas de Lima por defecto
+    const centroMapa = (latCliente && lonCliente) ? [latCliente, lonCliente] : [-10.667, -76.256];
+    const mapa = L.map('mapa').setView(centroMapa, 16);
 
-    const mapa = L.map('mapa').setView(centroMapa, 15);
-
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+    L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
+        attribution: '&copy; OpenStreetMap contributors'
     }).addTo(mapa);
 
-    // Marcador para el cliente (tu casa)
-    if (latCliente && lonCliente) {
-        // Icono personalizado para el cliente (Casa)
-        const iconoCasa = L.icon({
-            iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-blue.png', // Marcador azul
-            iconSize: [25, 41],
-            iconAnchor: [12, 41],
-            popupAnchor: [1, -34]
-        });
-        L.marker([latCliente, lonCliente], { icon: iconoCasa }).addTo(mapa).bindPopup('<b>Tu ubicación de entrega</b>');
-    }
-
-    // Marcador para el repartidor (este se moverá)
-    const iconoRepartidor = L.icon({ // Icono personalizado para el repartidor
-        iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-green.png', // Marcador verde
-        iconSize: [25, 41],
-        iconAnchor: [12, 41],
-        popupAnchor: [1, -34]
+    // Pin de la casa
+    const iconoCasa = L.divIcon({
+        className: 'custom-div-icon',
+        html: '<div class="pin-casa"><i class="bi bi-house-door-fill fs-4"></i></div>',
+        iconSize: [45, 45],
+        iconAnchor: [22, 45],
+        popupAnchor: [0, -40]
     });
-    
-    let marcadorRepartidor = L.marker(centroMapa, { 
-        icon: iconoRepartidor
-    }).addTo(mapa).bindPopup('<b>Repartidor</b>');
 
-    // Función para obtener y actualizar la ubicación del repartidor (sin cambios)
-    async function actualizarUbicacion() {
-        try {
-            const response = await fetch(`procesos/obtener_ubicacion_repartidor.php?id_repartidor=${idRepartidor}`);
-            const data = await response.json();
-
-            if (data.status === 'success') {
-                const nuevaPosicion = [data.latitud, data.longitud];
-                marcadorRepartidor.setLatLng(nuevaPosicion);
-                
-                // Opcional: Centrar el mapa entre el repartidor y el cliente
-                if (latCliente && lonCliente) {
-                    mapa.fitBounds([
-                        [latCliente, lonCliente],
-                        nuevaPosicion
-                    ], { padding: [50, 50] }); // Añade un poco de espacio
-                } else {
-                    mapa.setView(nuevaPosicion, 16); // Si no hay ubicación de cliente, solo sigue al repartidor
-                }
-            } else {
-                console.warn(data.message);
-            }
-        } catch (error) {
-            console.error("Error al obtener la ubicación:", error);
-        }
+    if (latCliente && lonCliente) {
+        L.marker([latCliente, lonCliente], { icon: iconoCasa })
+         .addTo(mapa)
+         .bindPopup('<b class="text-danger">Tu ubicación de entrega</b>');
     }
-    
-    // Llamar a la función cada 5 segundos
-    setInterval(actualizarUbicacion, 5000);
-    actualizarUbicacion(); // Primera llamada inmediata
+
+    // Pin del repartidor y Fetch
+    if (idRepartidor !== null) {
+        const iconoRepartidor = L.divIcon({
+            className: 'custom-div-icon',
+            html: '<div class="pin-repartidor"><i class="bi bi-scooter fs-4"></i></div>',
+            iconSize: [45, 45],
+            iconAnchor: [22, 45],
+            popupAnchor: [0, -40]
+        });
+        
+        let marcadorRepartidor = L.marker(centroMapa, { icon: iconoRepartidor })
+                                  .addTo(mapa)
+                                  .bindPopup('<b class="text-success">🛵 Tu pedido está en camino</b>');
+
+        async function actualizarUbicacion() {
+            try {
+                const response = await fetch(`procesos/obtener_ubicacion_repartidor.php?id_repartidor=${idRepartidor}`);
+                const data = await response.json();
+
+                if (data.status === 'success') {
+                    const nuevaPosicion = [data.latitud, data.longitud];
+                    marcadorRepartidor.setLatLng(nuevaPosicion);
+                }
+            } catch (error) {
+                console.error("Error al obtener la ubicación:", error);
+            }
+        }
+        
+        setInterval(actualizarUbicacion, 5000);
+        actualizarUbicacion();
+    } else {
+        L.popup()
+            .setLatLng(centroMapa)
+            .setContent("<div class='text-center p-2'><b>Buscando un repartidor cercano... 🛵</b><br><small class='text-muted'>Por favor espera</small></div>")
+            .openOn(mapa);
+    }
 });
 </script>
 

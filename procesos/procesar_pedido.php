@@ -8,6 +8,39 @@ error_reporting(E_ALL);
 session_start();
 require_once '../includes/conexion.php';
 
+// =========================================================================
+// ⏰ NUEVO: VALIDACIÓN DE HORARIO DE ATENCIÓN
+// =========================================================================
+date_default_timezone_set('America/Lima'); // Asegurar hora exacta de Perú
+$hora_actual = date('H:i');
+
+// Obtener horarios de la BD
+$sql_horario = "SELECT nombre_config, valor_config FROM configuracion WHERE nombre_config IN ('horario_apertura', 'horario_cierre')";
+$res_horario = $conn->query($sql_horario);
+$apertura = '18:30'; $cierre = '23:00'; // Valores por defecto en caso de fallo
+
+if ($res_horario && $res_horario->num_rows > 0) {
+    while($row = $res_horario->fetch_assoc()) {
+        if($row['nombre_config'] == 'horario_apertura') $apertura = $row['valor_config'];
+        if($row['nombre_config'] == 'horario_cierre') $cierre = $row['valor_config'];
+    }
+}
+
+$fuera_de_horario = false;
+// Lógica que soporta incluso si decides cerrar de madrugada (Ej: 18:00 a 02:00)
+if ($apertura < $cierre) {
+    if ($hora_actual < $apertura || $hora_actual > $cierre) $fuera_de_horario = true;
+} else {
+    if ($hora_actual < $apertura && $hora_actual > $cierre) $fuera_de_horario = true;
+}
+
+if ($fuera_de_horario) {
+    header("Location: ../index.php?error=horario_cerrado");
+    exit();
+}
+// =========================================================================
+
+
 // Verificar sesión
 if (!isset($_SESSION['cliente_id'])) {
     header("Location: ../login_cliente.php");
@@ -19,6 +52,30 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
     // 1. Recibir Datos del Formulario
     $cliente_id = $_SESSION['cliente_id'];
     $restaurante_id = $_POST['restaurante_id'] ?? null;
+    // =========================================================================
+// 🔒 NUEVO: VALIDACIÓN DE SEGURIDAD - ¿EL RESTAURANTE ESTÁ ABIERTO?
+// =========================================================================
+$sql_seguridad = "SELECT estado FROM restaurantes WHERE id = ?";
+$stmt_seguridad = $conn->prepare($sql_seguridad);
+$stmt_seguridad->bind_param("i", $restaurante_id);
+$stmt_seguridad->execute();
+$resultado_seguridad = $stmt_seguridad->get_result();
+
+if ($resultado_seguridad->num_rows > 0) {
+    $restaurante_check = $resultado_seguridad->fetch_assoc();
+    
+    // Si la columna estado dice "Cerrado" (o si usas 0 para cerrado, cámbialo aquí)
+    if (strtolower($restaurante_check['estado']) === 'cerrado' || $restaurante_check['estado'] == 0) {
+        
+        // El usuario intentó saltarse las reglas. Lo botamos con un error.
+        header("Location: ../index.php?error=restaurante_cerrado");
+        exit();
+    }
+} else {
+    // Si inventó un ID de restaurante que ni siquiera existe
+    die("Error de Seguridad: El restaurante no es válido.");
+}
+$stmt_seguridad->close();
     $direccion = $_POST['direccion'] ?? '';
     $referencia = $_POST['referencia'] ?? '-';
     

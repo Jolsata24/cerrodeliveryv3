@@ -254,11 +254,35 @@ $imagenes_locales = [
         </div>
     </div>
 </div>
-</div> <?php
+</div> 
+<?php
         // =====================================
         // CIERRE DE PHP (SIN CAMBIOS)
         // =====================================
         $stmt->close();
         $conn->close();
+        
         include 'includes/footer.php';
+        
         ?>
+        <?php if (isset($_GET['error']) && $_GET['error'] == 'horario_cerrado'): ?>
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+    <script>
+        document.addEventListener("DOMContentLoaded", function() {
+            Swal.fire({
+                icon: 'info', // Ícono azul de información
+                title: '¡Fuera de Horario! ⏰',
+                html: 'Actualmente nos encontramos cerrados.<br><br>Nuestro horario de atención es de <b>6:30 PM a 11:00 PM</b>.<br><br><i>¡Te esperamos más tarde para calmar tus antojos!</i>',
+                confirmButtonColor: '#198754', // Botón verde
+                confirmButtonText: '<i class="bi bi-hand-thumbs-up-fill me-2"></i>Entendido',
+                backdrop: `
+                    rgba(0,0,0,0.6)
+                `,
+                allowOutsideClick: false // Obliga al usuario a darle al botón
+            }).then((result) => {
+                // Limpiar la URL para que si recarga la página no vuelva a salir el mensaje
+                window.history.replaceState(null, null, window.location.pathname);
+            });
+        });
+    </script>
+<?php endif; ?>

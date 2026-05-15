@@ -1,6 +1,60 @@
 <?php
 session_start();
 require_once 'includes/conexion.php'; 
+// --- OBTENER CONFIGURACIÓN DE PAGO CENTRALIZADO ---
+$yape_numero = '969704480'; // Valor por defecto
+$yape_titular = 'Cerro Delivery SAC'; // Valor por defecto
+$yape_qr = 'assets/img/qr/qr_1.png'; // Imagen por defecto si falla la BD
+
+try {
+    // AÑADIDO: Ahora también buscamos 'yape_qr'
+    $sql_config = "SELECT nombre_config, valor_config FROM configuracion WHERE nombre_config IN ('yape_numero', 'yape_titular', 'yape_qr')";
+    $res_config = $conn->query($sql_config);
+
+    if ($res_config && $res_config->num_rows > 0) {
+        $config_yape = [];
+        while($row = $res_config->fetch_assoc()){
+            $config_yape[$row['nombre_config']] = $row['valor_config'];
+        }
+        
+        if(!empty($config_yape['yape_numero'])) $yape_numero = $config_yape['yape_numero'];
+        if(!empty($config_yape['yape_titular'])) $yape_titular = $config_yape['yape_titular'];
+        // AÑADIDO: Reemplazamos la imagen si se encontró en la BD
+        if(!empty($config_yape['yape_qr'])) $yape_qr = $config_yape['yape_qr'];
+    }
+} catch (Exception $e) {
+    // Si hay error, usará los valores por defecto
+}
+// =========================================================================
+// ⏰ VALIDACIÓN DE HORARIO DE ATENCIÓN (CHECKOUT)
+// =========================================================================
+date_default_timezone_set('America/Lima'); 
+$hora_actual = date('H:i');
+
+$sql_horario = "SELECT nombre_config, valor_config FROM configuracion WHERE nombre_config IN ('horario_apertura', 'horario_cierre')";
+$res_horario = $conn->query($sql_horario);
+$apertura = '18:30'; $cierre = '23:00'; 
+
+if ($res_horario && $res_horario->num_rows > 0) {
+    while($row = $res_horario->fetch_assoc()) {
+        if($row['nombre_config'] == 'horario_apertura') $apertura = $row['valor_config'];
+        if($row['nombre_config'] == 'horario_cierre') $cierre = $row['valor_config'];
+    }
+}
+
+$fuera_de_horario = false;
+if ($apertura < $cierre) {
+    if ($hora_actual < $apertura || $hora_actual > $cierre) $fuera_de_horario = true;
+} else {
+    if ($hora_actual < $apertura && $hora_actual > $cierre) $fuera_de_horario = true;
+}
+
+if ($fuera_de_horario) {
+    // Aquí redirigimos a index.php sin los "../" porque estamos en la carpeta principal
+    header("Location: index.php?error=horario_cerrado");
+    exit();
+}
+// =========================================================================
 
 // Seguridad: Verificar sesión
 if (!isset($_SESSION['cliente_id'])) {
@@ -22,19 +76,30 @@ $telefono_cliente = $datos_c['telefono'] ?? '';
 $modo_lluvia_activo = '0';
 $monto_extra_lluvia = 0.00;
 
-$sql_conf = "SELECT clave, valor FROM configuracion WHERE clave IN ('modo_lluvia', 'monto_recargo_lluvia')";
+// CORRECCIÓN: Usamos los nuevos nombres de las columnas 'nombre_config' y 'valor_config'
+$sql_conf = "SELECT nombre_config, valor_config FROM configuracion WHERE nombre_config IN ('modo_lluvia', 'monto_recargo_lluvia')";
 $res_conf = $conn->query($sql_conf);
 
 if($res_conf) {
     while($row = $res_conf->fetch_assoc()) {
-        if($row['clave'] == 'modo_lluvia') $modo_lluvia_activo = $row['valor'];
-        if($row['clave'] == 'monto_recargo_lluvia') $monto_extra_lluvia = floatval($row['valor']);
+        if($row['nombre_config'] == 'modo_lluvia') $modo_lluvia_activo = $row['valor_config'];
+        if($row['nombre_config'] == 'monto_recargo_lluvia') $monto_extra_lluvia = floatval($row['valor_config']);
     }
 }
 
 include 'includes/header.php';
 ?>
 <body>
+    <?php if (isset($_GET['error']) && $_GET['error'] == 'horario_cerrado'): ?>
+    <div class="container mt-4 position-relative" style="z-index: 9999;">
+        <div class="alert alert-warning alert-dismissible fade show shadow border-warning" role="alert">
+            <i class="bi bi-clock-history fs-4 me-2 text-danger"></i>
+            <strong>¡Lo sentimos, estamos fuera del horario de atención!</strong><br> 
+            Nuestro horario de delivery es de <strong>6:30 PM a 11:00 PM</strong>. ¡Te esperamos más tarde para calmar esos antojos!
+            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+        </div>
+    </div>
+<?php endif; ?>
 <div class="hero-quickbite">
     <div class="container hero-text text-center">
         <h1 class="display-4 fw-bold">Finalizar Pedido</h1>
@@ -96,47 +161,76 @@ include 'includes/header.php';
                             <input type="hidden" name="longitud" id="longitud">
                             <input type="hidden" name="total" id="input_total">
                             <input type="hidden" name="telefono" value="<?php echo htmlspecialchars($telefono_cliente); ?>">
-                            <input type="hidden" name="referencia" value="-"> 
-
                             <div class="mb-4">
-                                <label class="form-label fw-bold"><i class="bi bi-geo-alt-fill me-2"></i>Ubicación Exacta</label>
-                                <div id="mapa-checkout" style="height: 250px; width: 100%; border-radius: 10px; margin-bottom: 10px;" class="border"></div>
-                                <div id="alerta-zona" class="form-text mb-2 fw-bold"></div>
-                                
-                                <div class="d-grid mb-3">
-                                    <button type="button" class="btn btn-outline-primary btn-sm" id="usar-gps-btn">
-                                        <i class="bi bi-crosshair me-1"></i> Usar mi ubicación GPS
-                                    </button>
-                                    <div id="gps-status" class="form-text text-center"></div>
-                                </div>
-                                
-                                <label for="direccion" class="form-label small text-muted">Referencia escrita (Color de casa, piso, etc.)</label>
-                                <textarea class="form-control" id="direccion" name="direccion" rows="2" required placeholder="Ej: Casa verde de 3 pisos frente al parque..."></textarea>
-                            </div>
+    <label class="form-label fw-bold"><i class="bi bi-geo-alt-fill me-2"></i>Ubicación Exacta</label>
+    
+    <div class="alert alert-info py-2 small mb-2 text-center" style="border-radius: 10px;">
+        <i class="bi bi-info-circle-fill me-1"></i> <b>¡Interactivo!</b> Mueve el pin en el mapa para ubicar tu casa.
+    </div>
 
-                            <div class="mb-4">
-                                <label class="form-label fw-bold"><i class="bi bi-wallet2 me-2"></i>Método de Pago</label>
-                                <select class="form-select mb-3" id="metodo_pago" name="metodo_pago" required>
-                                    <option value="" selected disabled>Selecciona cómo pagar</option>
-                                    <option value="yape">Yape / Plin</option>
-                                    <option value="efectivo">Efectivo</option>
-                                </select>
+    <div id="mapa-checkout" style="height: 250px; width: 100%; border-radius: 10px; margin-bottom: 10px;" class="border"></div>
+    <div id="alerta-zona" class="form-text mb-2 fw-bold"></div>
+    
+    <div class="d-grid mb-3">
+        <button type="button" class="btn btn-outline-primary btn-sm" id="usar-gps-btn">
+            <i class="bi bi-crosshair me-1"></i> Usar mi ubicación GPS
+        </button>
+        <div id="gps-status" class="form-text text-center"></div>
+    </div>
+    
+    <div class="row g-2">
+        <div class="col-12">
+            <label for="direccion" class="form-label small fw-bold text-dark mb-1">Dirección exacta</label>
+            <textarea class="form-control" id="direccion" name="direccion" rows="2" required placeholder="Mueve el pin en el mapa o escribe tu calle aquí..."></textarea>
+        </div>
+        <div class="col-12">
+            <label for="referencia" class="form-label small fw-bold text-dark mb-1">Referencia (Opcional)</label>
+            <input type="text" class="form-control" id="referencia" name="referencia" placeholder="Ej: Portón negro, frente a la cancha...">
+        </div>
+    </div>
+</div>
 
-                                <div id="info-yape-container" class="card mb-3 border-primary bg-light" style="display: none;">
-                                    <div class="card-body text-center">
-                                        <h6 class="text-primary fw-bold mb-3"><i class="bi bi-qr-code"></i> Escanea y Paga</h6>
-                                        <div id="yape-qr-img-placeholder" class="mb-3 d-flex justify-content-center"></div>
-                                        <p class="mb-1 text-muted small">Número:</p>
-                                        <div class="d-flex justify-content-center align-items-center gap-2 mb-3">
-                                            <h3 class="fw-bold mb-0 text-dark" id="yape-numero-display">...</h3>
-                                            <button type="button" class="btn btn-outline-primary btn-sm rounded-circle" id="btn-copiar-yape"><i class="bi bi-clipboard"></i></button>
-                                        </div>
-                                        <div class="text-start bg-white p-3 rounded border">
-                                            <label for="comprobante_yape" class="form-label small fw-bold text-dark">Sube la captura (Obligatorio)</label>
-                                            <input type="file" class="form-control form-control-sm" id="comprobante_yape" name="evidencia_yape" accept="image/*">
-                                        </div>
-                                    </div>
-                                </div>
+<div class="mb-4">
+    <label class="form-label fw-bold"><i class="bi bi-wallet2 me-2"></i>Método de Pago</label>
+    <select class="form-select mb-3" id="metodo_pago" name="metodo_pago" required>
+        <option value="" selected disabled>Selecciona cómo pagar</option>
+        <option value="yape">Yape / Plin</option>
+        <option value="efectivo" disabled class="bg-light text-muted">Efectivo (Temporalmente Inactivo)</option>
+    </select>
+
+                                <div id="seccion-yape" class="mt-4 p-3 border rounded bg-light" style="border-left: 5px solid #732290 !important;">
+    <div class="d-flex align-items-center mb-3">
+        <div class="bg-white p-2 rounded shadow-sm me-3">
+            <img src="assets/img/logo.png" width="30" alt="Logo">
+        </div>
+        <div>
+            <h6 class="mb-0 fw-bold text-dark">Pago Único Cerro Delivery</h6>
+            <small class="text-muted">Escanea o copia el número abajo</small>
+        </div>
+    </div>
+
+    <div class="text-center">
+        <img src="<?php echo htmlspecialchars($yape_qr); ?>" style="max-width: 160px; border: 4px solid #732290;" class="img-thumbnail shadow-sm mb-3" alt="QR Yape Cerro Delivery">
+        
+        <div class="bg-white p-2 rounded mb-2 border">
+            <span class="d-block small text-muted">Titular de la cuenta:</span>
+            <span class="fw-bold text-dark text-uppercase"><?php echo htmlspecialchars($yape_titular); ?></span>
+        </div>
+
+        <div class="input-group mb-3 shadow-sm">
+            <span class="input-group-text bg-white text-muted small">Número:</span>
+            <input type="text" class="form-control fw-bold text-center bg-white" id="numero-yape" value="<?php echo htmlspecialchars($yape_numero); ?>" readonly>
+            <button class="btn btn-primary" type="button" onclick="copiarNumero()">
+                <i class="bi bi-clipboard-check me-1"></i> Copiar
+            </button>
+        </div>
+
+        <p class="small text-muted mb-2">
+            <i class="bi bi-camera-fill me-1"></i> Sube tu comprobante de pago:
+        </p>
+        <input type="file" name="evidencia_yape" class="form-control border-primary" id="evidencia_yape" accept="image/*">
+    </div>
+</div>
 
                                 <div id="div-vuelto" style="display: none;">
                                     <label for="monto_pagar" class="form-label small">¿Con cuánto pagarás?</label>
@@ -413,6 +507,30 @@ document.addEventListener('DOMContentLoaded', function() {
     let esCargaPesada = false;
 
     // =========================================================
+    // NUEVO: TRADUCIR COORDENADAS A DIRECCIÓN REAL
+    // =========================================================
+    async function autocompletarDireccion(lat, lng) {
+        try {
+            document.getElementById('direccion').value = "Buscando dirección...";
+            // Usamos la API gratuita de Nominatim
+            const response = await fetch(`https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${lat}&lon=${lng}`);
+            const data = await response.json();
+            
+            if (data && data.display_name) {
+                const partes = data.display_name.split(',');
+                // Rellenamos el text-area con la calle
+                document.getElementById('direccion').value = partes[0] + (partes[1] ? ',' + partes[1] : '');
+                // Rellenamos la referencia sugerida (Distrito/Ciudad)
+                document.getElementById('referencia').value = partes[2] ? partes[2].trim() : '';
+            } else {
+                document.getElementById('direccion').value = "";
+            }
+        } catch (error) {
+            console.error("Error obteniendo dirección:", error);
+            document.getElementById('direccion').value = "";
+        }
+    }
+    // =========================================================
     // 2. INICIALIZAR MAPA
     // =========================================================
     let mapa, marcador, poligonoZona;
@@ -606,10 +724,16 @@ document.addEventListener('DOMContentLoaded', function() {
     let temporizadorRuta;
 
     if(typeof marcador !== 'undefined'){
+        // NUEVO: Globito indicando al usuario que el pin se puede mover
+        marcador.bindPopup("<b>¡Arrástrame hasta tu puerta!</b><br><small>Actualizaré tu dirección sola.</small>").openPopup();
+
         marcador.on('dragend', function(e) {
             const pos = e.target.getLatLng(); 
             userLat = pos.lat; 
             userLng = pos.lng; 
+            
+            // Llama a la función de autocompletado
+            autocompletarDireccion(userLat, userLng);
             
             // 1. Mostrar visualmente que está calculando (Feedback visual)
             const celdaTotal = document.getElementById('celda-total-final');
@@ -635,13 +759,23 @@ document.addEventListener('DOMContentLoaded', function() {
     if(btnGps) {
         btnGps.addEventListener('click', function() {
             if (navigator.geolocation) {
-                document.getElementById('gps-status').innerHTML = '...';
+                document.getElementById('gps-status').innerHTML = '<span class="spinner-border spinner-border-sm text-primary"></span> Buscando...';
                 navigator.geolocation.getCurrentPosition(pos => {
                     userLat = pos.coords.latitude; userLng = pos.coords.longitude;
-                    if(mapa) { mapa.setView([userLat, userLng], 16); marcador.setLatLng([userLat, userLng]); }
-                    document.getElementById('direccion').value = `GPS (${userLat.toFixed(4)}, ${userLng.toFixed(4)})`;
+                    
+                    if(mapa) { 
+                        mapa.setView([userLat, userLng], 18); // Zoom más cercano al usar GPS
+                        marcador.setLatLng([userLat, userLng]); 
+                        marcador.openPopup();
+                    }
+                    
+                    // Llama a la función de autocompletado en lugar de poner las coordenadas secas
+                    autocompletarDireccion(userLat, userLng);
+                    
                     actualizarTotalesEnvio();
-                    document.getElementById('gps-status').innerHTML = 'Ok';
+                    document.getElementById('gps-status').innerHTML = '<span class="text-success fw-bold">GPS Encontrado</span>';
+                }, (error) => {
+                    document.getElementById('gps-status').innerHTML = '<span class="text-danger small">GPS desactivado o denegado</span>';
                 });
             }
         });
@@ -745,5 +879,26 @@ document.addEventListener('DOMContentLoaded', function() {
     
     if (typeof mapa !== 'undefined') setTimeout(() => mapa.invalidateSize(), 500);
 });
+function copiarNumero() {
+    const inputNumero = document.getElementById('numero-yape');
+    
+    // Seleccionar el contenido del input
+    inputNumero.select();
+    inputNumero.setSelectionRange(0, 99999); // Para móviles
+
+    // Copiar al portapapeles
+    navigator.clipboard.writeText(inputNumero.value).then(() => {
+        // Opcional: Cambiar texto del botón momentáneamente
+        const btn = event.currentTarget;
+        const originalText = btn.innerHTML;
+        btn.innerHTML = '<i class="bi bi-check-lg"></i> ¡Copiado!';
+        btn.classList.replace('btn-primary', 'btn-success');
+        
+        setTimeout(() => {
+            btn.innerHTML = originalText;
+            btn.classList.replace('btn-success', 'btn-primary');
+        }, 2000);
+    });
+}
 </script>
 <?php include 'includes/footer.php'; ?>
