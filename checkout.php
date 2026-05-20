@@ -477,18 +477,20 @@ document.addEventListener('DOMContentLoaded', function() {
     const checkoutForm = document.getElementById('checkout-form');
     
     const selectPago = document.getElementById('metodo_pago');
-    const containerYape = document.getElementById('info-yape-container');
+    const containerYape = document.getElementById('seccion-yape');  
+    //const containerYape = document.getElementById('info-yape-container');
     const displayYapeNum = document.getElementById('yape-numero-display');
     const displayYapeQR = document.getElementById('yape-qr-img-placeholder');
     const btnCopiar = document.getElementById('btn-copiar-yape');
     const divVuelto = document.getElementById('div-vuelto');
     const inputVuelto = document.getElementById('monto_pagar');
     
+    const inputYapeFile = document.getElementById('evidencia_yape');
     const modalBoleta = new bootstrap.Modal(document.getElementById('modalBoleta'));
     const btnEnviarFinal = document.getElementById('btn-enviar-final');
     const btnConfirmarInicial = document.querySelector('.btn-confirm-order');
     const alertaZona = document.getElementById('alerta-zona');
-    const inputYapeFile = document.getElementById('comprobante_yape');
+    //const inputYapeFile = document.getElementById('comprobante_yape');
     const checkPuerta = document.getElementById('check_puerta'); // Referencia al checkbox puerta
 
     // Estado
@@ -784,6 +786,9 @@ document.addEventListener('DOMContentLoaded', function() {
     // =========================================================
     // 7. VALIDACIÓN (INCLUYENDO CHECKBOX PUERTA)
     // =========================================================
+    // =========================================================
+    // 7. VALIDACIÓN (INCLUYENDO CHECKBOX PUERTA)
+    // =========================================================
     function validarBotonConfirmacion() {
         if (!selectPago || !btnConfirmarInicial) return;
         
@@ -797,17 +802,20 @@ document.addEventListener('DOMContentLoaded', function() {
             txt = 'Fuera de Zona'; 
             cls = 'btn-secondary'; 
         }
-        // 2. Puerta (NUEVO)
+        // 2. Puerta Segura
         else if (checkPuerta && !checkPuerta.checked) {
             ok = false;
             txt = 'Acepta entrega en puerta';
             cls = 'btn-secondary';
         }
         // 3. Yape
-        else if (selectPago.value === 'yape' && (!inputYapeFile.files || inputYapeFile.files.length === 0)) {
-            ok = false; 
-            txt = 'Falta captura de pago'; 
-            cls = 'btn-secondary';
+        else if (selectPago.value === 'yape') {
+            // Evitamos que crashee si el input es null
+            if (!inputYapeFile || !inputYapeFile.files || inputYapeFile.files.length === 0) {
+                ok = false; 
+                txt = 'Falta captura de pago'; 
+                cls = 'btn-secondary';
+            }
         }
 
         btnConfirmarInicial.disabled = !ok;
@@ -816,18 +824,21 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     // Listeners de validación
-    if(selectPago) selectPago.addEventListener('change', function() {
-        containerYape.style.display = (this.value === 'yape') ? 'block' : 'none';
-        divVuelto.style.display = (this.value === 'efectivo') ? 'block' : 'none';
-        if(this.value === 'yape') {
-            displayYapeNum.textContent = datosRestaurante.yapeNumero || "--";
-            displayYapeQR.innerHTML = datosRestaurante.yapeQR ? `<img src="assets/img/qr/${datosRestaurante.yapeQR}" class="img-fluid" style="max-width:150px">` : 'Sin QR';
-        }
-        validarBotonConfirmacion();
-    });
+    if(selectPago) {
+        selectPago.addEventListener('change', function() {
+            if(containerYape) containerYape.style.display = (this.value === 'yape') ? 'block' : 'none';
+            if(divVuelto) divVuelto.style.display = (this.value === 'efectivo') ? 'block' : 'none';
+            validarBotonConfirmacion();
+        });
+    }
     
     if(inputYapeFile) inputYapeFile.addEventListener('change', validarBotonConfirmacion);
-    if(checkPuerta) checkPuerta.addEventListener('change', validarBotonConfirmacion); // ESCUCHA EL CHECKBOX
+    if(checkPuerta) checkPuerta.addEventListener('change', validarBotonConfirmacion);
+
+    // Ocultar la sección Yape al cargar la página si no hay pago seleccionado
+    if(containerYape && selectPago && selectPago.value !== 'yape') {
+        containerYape.style.display = 'none';
+    }
     if(btnCopiar) btnCopiar.addEventListener('click', () => { navigator.clipboard.writeText(displayYapeNum.textContent); alert("Copiado"); });
 
     // Enviar
@@ -900,5 +911,6 @@ function copiarNumero() {
         }, 2000);
     });
 }
+
 </script>
 <?php include 'includes/footer.php'; ?>

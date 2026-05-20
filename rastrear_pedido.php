@@ -9,6 +9,7 @@ require_once 'includes/conexion.php';
 $id_pedido = $_GET['id_pedido'];
 $id_cliente_sesion = $_SESSION['cliente_id'];
 
+// NUEVO: Consulta actualizada para traer también los teléfonos
 $sql = "SELECT 
             p.latitud as latitud_cliente, 
             p.longitud as longitud_cliente, 
@@ -17,7 +18,9 @@ $sql = "SELECT
             p.estado_pedido,
             r.nombre_restaurante,
             r.direccion as direccion_restaurante,
-            rep.nombre as nombre_repartidor
+            r.telefono as telefono_restaurante,
+            rep.nombre as nombre_repartidor,
+            rep.telefono as telefono_repartidor
         FROM pedidos p
         JOIN restaurantes r ON p.id_restaurante = r.id
         LEFT JOIN repartidores rep ON p.id_repartidor = rep.id
@@ -35,14 +38,15 @@ if ($resultado->num_rows == 0) {
 $pedido = $resultado->fetch_assoc();
 $id_repartidor = $pedido['id_repartidor'];
 
-// ELIMINADA LA RESTRICCIÓN QUE REDIRIGÍA A MIS_PEDIDOS
-// if (is_null($id_repartidor)) { ... } 
-
 // Variables para el diseño
 $nombre_repartidor = $pedido['nombre_repartidor'] ?? 'Buscando repartidor...';
 $estado_pedido = $pedido['estado_pedido'];
 $direccion_restaurante = $pedido['direccion_restaurante'];
 $direccion_cliente = $pedido['direccion_pedido'];
+
+// NUEVO: Variables para los teléfonos
+$telefono_restaurante = $pedido['telefono_restaurante'];
+$telefono_repartidor = $pedido['telefono_repartidor'];
 
 include 'includes/header.php';
 ?>
@@ -118,7 +122,7 @@ include 'includes/header.php';
                                     <p class="text-muted mb-0">Por favor, espera un momento.</p>
                                 </div>
                             <?php else: ?>
-                                <img src="https://via.placeholder.com/60/198754/ffffff?text=<?php echo substr($nombre_repartidor, 0, 1); ?>" alt="repartidor" class="rounded-circle me-3">
+                                <img src="https://via.placeholder.com/60/198754/ffffff?text=<?php echo substr(htmlspecialchars($nombre_repartidor), 0, 1); ?>" alt="repartidor" class="rounded-circle me-3">
                                 <div>
                                     <h5 class="mb-0"><?php echo htmlspecialchars($nombre_repartidor); ?></h5>
                                     <p class="text-success fw-bold mb-0">Repartidor Asignado</p>
@@ -147,6 +151,26 @@ include 'includes/header.php';
                         
                         <hr class="my-4">
 
+                        <div class="d-grid mb-4">
+                            <?php if (is_null($id_repartidor)): ?>
+                                <?php 
+                                    // Limpiamos el número (solo dejamos números) y aseguramos el prefijo 51 de Perú
+                                    $num_rest = preg_replace('/[^0-9]/', '', $telefono_restaurante);
+                                    if (strlen($num_rest) == 9) { $num_rest = '51' . $num_rest; }
+                                ?>
+                                <a href="https://wa.me/<?php echo $num_rest; ?>?text=Hola,%20tengo%20una%20consulta%20sobre%20mi%20pedido%20%23<?php echo $id_pedido; ?>" target="_blank" class="btn btn-outline-success btn-lg rounded-pill fw-bold shadow-sm">
+                                    <i class="bi bi-whatsapp me-2"></i> WhatsApp al Restaurante
+                                </a>
+                            <?php else: ?>
+                                <?php 
+                                    $num_rep = preg_replace('/[^0-9]/', '', $telefono_repartidor);
+                                    if (strlen($num_rep) == 9) { $num_rep = '51' . $num_rep; }
+                                ?>
+                                <a href="https://wa.me/<?php echo $num_rep; ?>?text=Hola,%20soy%20el%20cliente%20del%20pedido%20%23<?php echo $id_pedido; ?>" target="_blank" class="btn btn-success btn-lg rounded-pill fw-bold shadow">
+                                    <i class="bi bi-whatsapp me-2"></i> WhatsApp a <?php echo explode(' ', trim($nombre_repartidor))[0]; ?>
+                                </a>
+                            <?php endif; ?>
+                        </div>
                         <div class="route-point pickup mb-3">
                             <strong>Recoger en: <?php echo htmlspecialchars($pedido['nombre_restaurante']); ?></strong>
                             <small><?php echo htmlspecialchars($direccion_restaurante); ?></small>
