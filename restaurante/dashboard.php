@@ -9,7 +9,7 @@ require_once '../includes/conexion.php';
 $id_restaurante_actual = $_SESSION['restaurante_id'];
 
 // Consultas para datos del restaurante
-$sql_restaurante = "SELECT hora_apertura, hora_cierre, telefono, yape_numero, yape_qr, latitud, longitud FROM restaurantes WHERE id = ?";
+$sql_restaurante = "SELECT hora_apertura, hora_cierre, hora_apertura_sab, hora_cierre_sab, hora_apertura_dom, hora_cierre_dom, telefono, yape_numero, yape_qr, latitud, longitud FROM restaurantes WHERE id = ?";
 $stmt_restaurante = $conn->prepare($sql_restaurante);
 $stmt_restaurante->bind_param("i", $id_restaurante_actual);
 $stmt_restaurante->execute();
@@ -198,20 +198,46 @@ include '../includes/header.php';
                     </div>
                     <div class="card-body">
                         <form action="../procesos/actualizar_horario.php" method="POST" class="mb-4">
-                            <h6><i class="bi bi-clock-fill me-2"></i>Horario Comercial</h6>
-                            <div class="row align-items-end g-2">
-                                <div class="col"><label class="form-label">Apertura</label><input type="time"
-                                        class="form-control" name="hora_apertura"
-                                        value="<?php echo htmlspecialchars($restaurante_data['hora_apertura'] ?? ''); ?>">
-                                </div>
-                                <div class="col"><label class="form-label">Cierre</label><input type="time"
-                                        class="form-control" name="hora_cierre"
-                                        value="<?php echo htmlspecialchars($restaurante_data['hora_cierre'] ?? ''); ?>">
-                                </div>
-                                <div class="col-auto"><button type="submit"
-                                        class="btn btn-secondary w-100">Guardar</button></div>
-                            </div>
-                        </form>
+    <h6 class="fw-bold"><i class="bi bi-clock-fill me-2"></i>Horario Comercial</h6>
+    
+    <div class="row align-items-end g-2 mb-2">
+        <div class="col-12"><span class="badge bg-primary w-100 text-start">Lunes a Viernes</span></div>
+        <div class="col">
+            <label class="form-label small text-muted mb-0">Apertura</label>
+            <input type="time" class="form-control form-control-sm" name="hora_apertura" value="<?php echo htmlspecialchars($restaurante_data['hora_apertura'] ?? ''); ?>">
+        </div>
+        <div class="col">
+            <label class="form-label small text-muted mb-0">Cierre</label>
+            <input type="time" class="form-control form-control-sm" name="hora_cierre" value="<?php echo htmlspecialchars($restaurante_data['hora_cierre'] ?? ''); ?>">
+        </div>
+    </div>
+    
+    <div class="row align-items-end g-2 mb-2">
+        <div class="col-12"><span class="badge bg-success w-100 text-start">Sábados</span></div>
+        <div class="col">
+            <label class="form-label small text-muted mb-0">Apertura Sáb</label>
+            <input type="time" class="form-control form-control-sm" name="hora_apertura_sab" value="<?php echo htmlspecialchars($restaurante_data['hora_apertura_sab'] ?? ''); ?>">
+        </div>
+        <div class="col">
+            <label class="form-label small text-muted mb-0">Cierre Sáb</label>
+            <input type="time" class="form-control form-control-sm" name="hora_cierre_sab" value="<?php echo htmlspecialchars($restaurante_data['hora_cierre_sab'] ?? ''); ?>">
+        </div>
+    </div>
+
+    <div class="row align-items-end g-2 mb-3">
+        <div class="col-12"><span class="badge bg-warning text-dark w-100 text-start">Domingos</span></div>
+        <div class="col">
+            <label class="form-label small text-muted mb-0">Apertura Dom</label>
+            <input type="time" class="form-control form-control-sm" name="hora_apertura_dom" value="<?php echo htmlspecialchars($restaurante_data['hora_apertura_dom'] ?? ''); ?>">
+        </div>
+        <div class="col">
+            <label class="form-label small text-muted mb-0">Cierre Dom</label>
+            <input type="time" class="form-control form-control-sm" name="hora_cierre_dom" value="<?php echo htmlspecialchars($restaurante_data['hora_cierre_dom'] ?? ''); ?>">
+        </div>
+    </div>
+    
+    <button type="submit" class="btn btn-secondary w-100">Guardar Horarios</button>
+</form>
                         <hr>
                         <form action="../procesos/actualizar_telefono.php" method="POST" class="mt-4">
                             <h6><i class="bi bi-whatsapp me-2"></i>Notificaciones</h6>

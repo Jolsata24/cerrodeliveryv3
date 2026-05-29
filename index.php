@@ -150,18 +150,44 @@ $imagenes_locales = [
                 <?php while ($restaurante = $resultado->fetch_assoc()): // Lógica sin cambios 
                 ?>
                     <?php
-                    // Lógica para verificar si está abierto (sin cambios)
-                    $esta_abierto = false;
-                    if (!empty($restaurante['hora_apertura']) && !empty($restaurante['hora_cierre'])) {
-                        $apertura = $restaurante['hora_apertura'];
-                        $cierre = $restaurante['hora_cierre'];
-                        if ($apertura < $cierre) {
-                            if ($hora_actual >= $apertura && $hora_actual <= $cierre) $esta_abierto = true;
-                        } else {
-                            if ($hora_actual >= $apertura || $hora_actual <= $cierre) $esta_abierto = true;
-                        }
-                    }
-                    ?>
+// Esto va dentro del while donde muestras los restaurantes en index.php
+date_default_timezone_set('America/Lima'); 
+
+$dia_semana = date('N'); // 1 = Lunes, ..., 6 = Sábado, 7 = Domingo
+$hora_actual = date('H:i:s');
+
+// 1. Elegir el horario correcto según el día
+if ($dia_semana == 6) { 
+    // Es Sábado
+    $apertura = !empty($restaurante['hora_apertura_sab']) ? $restaurante['hora_apertura_sab'] : $restaurante['hora_apertura'];
+    $cierre = !empty($restaurante['hora_cierre_sab']) ? $restaurante['hora_cierre_sab'] : $restaurante['hora_cierre'];
+} elseif ($dia_semana == 7) { 
+    // Es Domingo
+    $apertura = !empty($restaurante['hora_apertura_dom']) ? $restaurante['hora_apertura_dom'] : $restaurante['hora_apertura'];
+    $cierre = !empty($restaurante['hora_cierre_dom']) ? $restaurante['hora_cierre_dom'] : $restaurante['hora_cierre'];
+} else { 
+    // De Lunes a Viernes
+    $apertura = $restaurante['hora_apertura'];
+    $cierre = $restaurante['hora_cierre'];
+}
+
+// 2. Calcular si está abierto o cerrado en este momento
+$esta_abierto = false;
+
+if (!empty($apertura) && !empty($cierre)) {
+    if ($apertura > $cierre) {
+        // Pasa de la medianoche (ej: abre 18:00, cierra 02:00)
+        if ($hora_actual >= $apertura || $hora_actual <= $cierre) {
+            $esta_abierto = true;
+        }
+    } else {
+        // Horario de un solo día (ej: abre 08:00, cierra 22:00)
+        if ($hora_actual >= $apertura && $hora_actual <= $cierre) {
+            $esta_abierto = true;
+        }
+    }
+}
+?>
                     <div class="col">
                         <div class="card h-100 shadow-sm card-restaurant">
                             <img src="assets/img/restaurantes/<?php echo htmlspecialchars($restaurante['imagen_fondo']); ?>" class="card-img-top" style="height: 200px; object-fit: cover;" alt="<?php echo htmlspecialchars($restaurante['nombre_restaurante']); ?>">
