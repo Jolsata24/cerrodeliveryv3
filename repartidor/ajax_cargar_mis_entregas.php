@@ -34,19 +34,13 @@ $resultado_entregas = $stmt->get_result();
                 <span class="badge bg-light text-dark fs-6"><?php echo htmlspecialchars($entrega['estado_pedido']); ?></span>
             </div>
             <div class="card-body">
-                <div class="route-info mb-4">
+                <div class="route-info mb-3">
                     <div class="route-point pickup mb-3">
                         <i class="bi bi-shop text-primary"></i>
                         <div>
                             <small class="text-muted">RECOGER EN:</small><br>
                             <strong><?php echo htmlspecialchars($entrega['nombre_restaurante']); ?></strong><br>
-                            <small><?php echo htmlspecialchars($entrega['direccion_restaurante']); ?></small><br>
-                            
-                            <?php if (!empty($entrega['telefono_restaurante'])): ?>
-                                <a href="tel:<?php echo $entrega['telefono_restaurante']; ?>" class="btn btn-sm btn-success mt-2 fw-bold">
-                                    <i class="bi bi-telephone-fill me-1"></i> Llamar Restaurante
-                                </a>
-                            <?php endif; ?>
+                            <small><?php echo htmlspecialchars($entrega['direccion_restaurante']); ?></small>
                         </div>
                     </div>
                     
@@ -60,13 +54,25 @@ $resultado_entregas = $stmt->get_result();
                     </div>
                 </div>
                 
-                <div class="d-grid gap-2">
-                    <a href="https://wa.me/51<?php echo htmlspecialchars($entrega['telefono_pedido']); ?>?text=Hola, soy tu repartidor de CerroDelivery. Te escribo por tu pedido #<?php echo $entrega['id']; ?>." target="_blank" class="btn btn-outline-success fw-bold">
-                        <i class="bi bi-whatsapp me-2"></i>Contactar Cliente
-                    </a>
+                <div class="d-flex gap-2 mb-3 mt-4">
+                    <?php if (!empty($entrega['telefono_restaurante'])): ?>
+                        <a href="tel:<?php echo $entrega['telefono_restaurante']; ?>" class="btn btn-outline-dark fw-bold flex-fill">
+                            <i class="bi bi-telephone-fill me-1"></i> Llamar Local
+                        </a>
+                    <?php endif; ?>
                     
+                    <?php if (!empty($entrega['telefono_pedido'])): ?>
+                        <a href="https://wa.me/51<?php echo htmlspecialchars($entrega['telefono_pedido']); ?>?text=¡Hola!, Te saluda tu repartidor de CerroDelivery. Te confirmo que ya he aceptado tu pedido y voy en camino a recogerlo.
+
+A partir de ahora, puedes seguir mi ubicación en tiempo real desde el enlace de rastreo en tu panel de 'Mis Pedidos'. Estaré atento a cualquier detalle. ¡Gracias por tu confianza!" target="_blank" class="btn btn-success fw-bold flex-fill text-white">
+                            <i class="bi bi-whatsapp me-1"></i> Chat Cliente
+                        </a>
+                    <?php endif; ?>
+                </div>
+                
+                <div class="d-grid gap-2">
                     <?php if (!empty($entrega['latitud']) && !empty($entrega['longitud'])): ?>
-                        <a href="https://www.google.com/maps/search/?api=1&query=<?php echo $entrega['latitud']; ?>,<?php echo $entrega['longitud']; ?>" target="_blank" class="btn btn-outline-primary fw-bold">
+                        <a href="https://www.google.com/maps/dir/?api=1&destination=<?php echo $entrega['latitud']; ?>,<?php echo $entrega['longitud']; ?>" target="_blank" class="btn btn-primary fw-bold py-2">
                             <i class="bi bi-geo-alt-fill me-2"></i>Ir con GPS (Google Maps)
                         </a>
                     <?php else: ?>
@@ -89,7 +95,7 @@ $resultado_entregas = $stmt->get_result();
                     
                     <?php elseif ($entrega['estado_pedido'] == 'Listo para recoger'): ?>
                         <input type="hidden" name="nuevo_estado" value="En camino">
-                        <button type="submit" class="btn btn-primary w-100 fw-bold py-2 fs-5">
+                        <button type="submit" class="btn btn-info w-100 fw-bold py-2 fs-5 text-white" style="background-color: #0dcaf0; border: none;">
                             <i class="bi bi-scooter me-2"></i>Tengo la comida ¡Voy al Cliente!
                         </button>
                     

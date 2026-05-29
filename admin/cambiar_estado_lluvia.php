@@ -11,7 +11,7 @@ if (!isset($_SESSION['admin_logged_in']) || $_SESSION['admin_logged_in'] !== tru
 $nuevo_estado = $_POST['estado'] ?? '0'; // Recibe '1' o '0'
 
 // Actualizamos en la base de datos
-$sql = "UPDATE configuracion SET valor = ? WHERE clave = 'modo_lluvia'";
+$sql = "UPDATE configuracion SET valor_config = ? WHERE nombre_config = 'modo_lluvia'";
 $stmt = $conn->prepare($sql);
 $stmt->bind_param("s", $nuevo_estado);
 

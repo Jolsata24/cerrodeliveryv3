@@ -8,9 +8,7 @@ if (!isset($_SESSION['restaurante_id'])) {
 require_once '../includes/conexion.php';
 $id_restaurante_actual = $_SESSION['restaurante_id'];
 
-// Consultas para datos del restaurante y platos (SIN CAMBIOS)
-// Consultas para datos del restaurante y platos (CORREGIDO)
-// Agregamos latitud, longitud y datos de yape para que el dashboard no falle
+// Consultas para datos del restaurante
 $sql_restaurante = "SELECT hora_apertura, hora_cierre, telefono, yape_numero, yape_qr, latitud, longitud FROM restaurantes WHERE id = ?";
 $stmt_restaurante = $conn->prepare($sql_restaurante);
 $stmt_restaurante->bind_param("i", $id_restaurante_actual);
@@ -18,15 +16,12 @@ $stmt_restaurante->execute();
 $restaurante_data = $stmt_restaurante->get_result()->fetch_assoc();
 $stmt_restaurante->close();
 
-// Obtener los platos del restaurante (SOLO LOS VISIBLES)
-// CORRECTO para dashboard.php
+// Obtener los platos del restaurante
 $sql_platos = "SELECT * FROM menu_platos WHERE id_restaurante = ? ORDER BY id DESC";
 $stmt_platos = $conn->prepare($sql_platos);
 $stmt_platos->bind_param("i", $id_restaurante_actual);
 $stmt_platos->execute();
 $resultado_platos = $stmt_platos->get_result();
-
-// ... (después de $resultado_platos = ... )
 
 // 1. Obtener TODAS las categorías posibles (para el formulario)
 $sql_all_cats = "SELECT * FROM categorias ORDER BY nombre_categoria ASC";
@@ -39,28 +34,58 @@ $stmt_my_cats->bind_param("i", $id_restaurante_actual);
 $stmt_my_cats->execute();
 $res_my_cats = $stmt_my_cats->get_result();
 
-// Guardamos los IDs en un array simple para buscar fácil: [1, 5, 8]
 $mis_categorias_ids = [];
 while ($row = $res_my_cats->fetch_assoc()) {
     $mis_categorias_ids[] = $row['id_categoria'];
 }
 $stmt_my_cats->close();
 
-// ... (sigue el include header.php)
-// Consulta para pedidos pendientes (SIN CAMBIOS)
-$sql_count = "SELECT COUNT(id) AS total_pendientes FROM pedidos WHERE id_restaurante = ? AND (estado_pedido = 'Pendiente' OR estado_pedido = 'En preparación')";
-$stmt_count = $conn->prepare($sql_count);
-$stmt_count->bind_param("i", $id_restaurante_actual);
-$stmt_count->execute();
-$row_count = $stmt_count->get_result()->fetch_assoc();
-$total_pendientes = $row_count['total_pendientes'];
+// ==========================================
+// NUEVAS CONSULTAS PARA GRÁFICOS Y ESTADÍSTICAS
+// ==========================================
 
+// Ganancias y ventas - HOY
+$sql_hoy = "SELECT COUNT(id) as total_ventas, COALESCE(SUM(monto_total - costo_envio), 0) as ganancias FROM pedidos WHERE id_restaurante = ? AND estado_pedido = 'Entregado' AND DATE(fecha_pedido) = CURDATE()";
+$stmt_hoy = $conn->prepare($sql_hoy);
+$stmt_hoy->bind_param("i", $id_restaurante_actual);
+$stmt_hoy->execute();
+$stats_hoy = $stmt_hoy->get_result()->fetch_assoc();
+$stmt_hoy->close();
+
+// Ganancias y ventas - SEMANA (Asumiendo que la semana empieza el lunes)
+$sql_semana = "SELECT COUNT(id) as total_ventas, COALESCE(SUM(monto_total - costo_envio), 0) as ganancias FROM pedidos WHERE id_restaurante = ? AND estado_pedido = 'Entregado' AND YEARWEEK(fecha_pedido, 1) = YEARWEEK(CURDATE(), 1)";
+$stmt_semana = $conn->prepare($sql_semana);
+$stmt_semana->bind_param("i", $id_restaurante_actual);
+$stmt_semana->execute();
+$stats_semana = $stmt_semana->get_result()->fetch_assoc();
+$stmt_semana->close();
+
+// Ganancias y ventas - MES
+$sql_mes = "SELECT COUNT(id) as total_ventas, COALESCE(SUM(monto_total - costo_envio), 0) as ganancias FROM pedidos WHERE id_restaurante = ? AND estado_pedido = 'Entregado' AND MONTH(fecha_pedido) = MONTH(CURDATE()) AND YEAR(fecha_pedido) = YEAR(CURDATE())";
+$stmt_mes = $conn->prepare($sql_mes);
+$stmt_mes->bind_param("i", $id_restaurante_actual);
+$stmt_mes->execute();
+$stats_mes = $stmt_mes->get_result()->fetch_assoc();
+$stmt_mes->close();
+
+// Datos para el Gráfico (Días de la semana actual: Lunes a Domingo)
+$ventas_dias = [0, 0, 0, 0, 0, 0, 0]; 
+$sql_grafico = "SELECT WEEKDAY(fecha_pedido) as dia, COALESCE(SUM(monto_total - costo_envio), 0) as total FROM pedidos WHERE id_restaurante = ? AND estado_pedido = 'Entregado' AND YEARWEEK(fecha_pedido, 1) = YEARWEEK(CURDATE(), 1) GROUP BY dia";
+$stmt_grafico = $conn->prepare($sql_grafico);
+$stmt_grafico->bind_param("i", $id_restaurante_actual);
+$stmt_grafico->execute();
+$res_grafico = $stmt_grafico->get_result();
+while ($row = $res_grafico->fetch_assoc()) {
+    $ventas_dias[$row['dia']] = (float)$row['total'];
+}
+$stmt_grafico->close();
 
 
 include '../includes/header.php';
 ?>
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <style>
     #mapa-restaurante {
         height: 300px;
@@ -76,8 +101,7 @@ include '../includes/header.php';
                 <h1 class="h2 fw-bold">Panel de <?php echo htmlspecialchars($_SESSION['restaurante_nombre']); ?></h1>
                 <p class="lead text-white-50 mb-0">Un resumen de la actividad de tu negocio.</p>
             </div>
-            <a href="logout.php" class="btn btn-outline-danger mt-2 mt-md-0"><i
-                    class="bi bi-box-arrow-right me-2"></i>Cerrar Sesión</a>
+            <a href="logout.php" class="btn btn-outline-danger mt-2 mt-md-0"><i class="bi bi-box-arrow-right me-2"></i>Cerrar Sesión</a>
         </div>
     </div>
 </div>
@@ -86,31 +110,55 @@ include '../includes/header.php';
     <div class="container">
 
         <div class="row g-4 mb-4">
-            <div class="col-md-6">
-                <div class="card summary-card-gradient summary-card-1 shadow-sm">
-                    <div class="card-body d-flex justify-content-between align-items-center">
-                        <div>
-                            <h5 class="card-title text-white">Pedidos Activos</h5>
-                            <p class="display-4 fw-bold text-white mb-0"><?php echo $total_pendientes; ?></p>
-                            <a href="pedidos.php" class="stretched-link text-white-50">Gestionar pedidos</a>
-                        </div>
-                        <div class="icon-circle">
-                            <i class="bi bi-receipt-cutoff"></i>
-                        </div>
+            <div class="col-lg-8">
+                <div class="card dashboard-card h-100 shadow-sm border-0">
+                    <div class="card-header bg-white border-bottom-0 pb-0 mt-2">
+                        <h5 class="mb-0 fw-bold"><i class="bi bi-bar-chart-line-fill text-primary me-2"></i>Ganancias de la Semana Actual</h5>
+                    </div>
+                    <div class="card-body">
+                        <canvas id="ventasChart" height="100"></canvas>
                     </div>
                 </div>
             </div>
-            <div class="col-md-6">
-                <div class="card summary-card-gradient summary-card-2 shadow-sm">
-                    <div class="card-body d-flex justify-content-between align-items-center">
-                        <div>
-                            <h5 class="card-title text-white">Platos en Menú</h5>
-                            <p class="display-4 fw-bold text-white mb-0"><?php echo $resultado_platos->num_rows; ?></p>
-                            <span class="text-white-50">Total registrados</span>
-                        </div>
-                        <div class="icon-circle">
+            <div class="col-lg-4">
+                <div class="card summary-card-gradient summary-card-2 shadow-sm h-100">
+                    <div class="card-body d-flex flex-column justify-content-center align-items-center text-center">
+                        <div class="icon-circle mb-3" style="width: 70px; height: 70px; font-size: 2rem;">
                             <i class="bi bi-card-checklist"></i>
                         </div>
+                        <h5 class="card-title text-white">Platos en Menú</h5>
+                        <p class="display-4 fw-bold text-white mb-0"><?php echo $resultado_platos->num_rows; ?></p>
+                        <span class="text-white-50">Total registrados activos</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="row g-4 mb-4">
+            <div class="col-md-4">
+                <div class="card shadow-sm border-0 rounded-4" style="border-left: 5px solid #0d6efd !important;">
+                    <div class="card-body text-center py-4">
+                        <h6 class="text-uppercase text-muted fw-bold mb-2"><i class="bi bi-calendar-day me-1"></i> Hoy</h6>
+                        <h2 class="text-primary fw-bold mb-2">S/ <?php echo number_format($stats_hoy['ganancias'], 2); ?></h2>
+                        <span class="badge bg-primary rounded-pill px-3 py-2 fs-6"><?php echo $stats_hoy['total_ventas']; ?> Entregas</span>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-4">
+                <div class="card shadow-sm border-0 rounded-4" style="border-left: 5px solid #198754 !important;">
+                    <div class="card-body text-center py-4">
+                        <h6 class="text-uppercase text-muted fw-bold mb-2"><i class="bi bi-calendar-week me-1"></i> Esta Semana</h6>
+                        <h2 class="text-success fw-bold mb-2">S/ <?php echo number_format($stats_semana['ganancias'], 2); ?></h2>
+                        <span class="badge bg-success rounded-pill px-3 py-2 fs-6"><?php echo $stats_semana['total_ventas']; ?> Entregas</span>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-4">
+                <div class="card shadow-sm border-0 rounded-4" style="border-left: 5px solid #ffc107 !important;">
+                    <div class="card-body text-center py-4">
+                        <h6 class="text-uppercase text-muted fw-bold mb-2"><i class="bi bi-calendar-month me-1"></i> Este Mes</h6>
+                        <h2 class="text-warning fw-bold mb-2" style="color: #d39e00 !important;">S/ <?php echo number_format($stats_mes['ganancias'], 2); ?></h2>
+                        <span class="badge bg-warning text-dark rounded-pill px-3 py-2 fs-6"><?php echo $stats_mes['total_ventas']; ?> Entregas</span>
                     </div>
                 </div>
             </div>
@@ -148,59 +196,6 @@ include '../includes/header.php';
                     <div class="card-header">
                         <h5 class="mb-0">Configuración General</h5>
                     </div>
-                    <div class="card dashboard-card mt-4 border-warning">
-    <div class="card-header bg-warning text-dark">
-        <h5 class="mb-0 fw-bold"><i class="bi bi-person-badge-fill me-2"></i>Solicitudes de Repartidores</h5>
-    </div>
-    <div class="card-body">
-        <?php
-        // Consulta para buscar solicitudes pendientes
-        // Nota: Nos aseguramos de usar columnas que SÍ existen en tu BD (nombre, telefono)
-        $sql_solicitudes = "SELECT ra.id AS id_afiliacion, r.nombre, r.telefono
-                            FROM repartidor_afiliaciones ra
-                            JOIN repartidores r ON ra.id_repartidor = r.id
-                            WHERE ra.id_restaurante = ? AND ra.estado_afiliacion = 'pendiente'";
-        
-        $stmt_sol = $conn->prepare($sql_solicitudes);
-        $stmt_sol->bind_param("i", $id_restaurante_actual);
-        $stmt_sol->execute();
-        $res_sol = $stmt_sol->get_result();
-        
-        if ($res_sol->num_rows > 0):
-        ?>
-            <div class="list-group list-group-flush">
-                <?php while ($sol = $res_sol->fetch_assoc()): ?>
-                    <div class="list-group-item px-0">
-                        <div class="d-flex justify-content-between align-items-center mb-2">
-                            <div>
-                                <h6 class="mb-0 fw-bold"><?php echo htmlspecialchars($sol['nombre']); ?></h6>
-                                <small class="text-muted">Tel: <?php echo htmlspecialchars($sol['telefono']); ?></small>
-                            </div>
-                        </div>
-                        <div class="d-flex gap-2">
-                            <form action="../procesos/gestionar_afiliacion.php" method="POST" class="w-50">
-                                <input type="hidden" name="id_afiliacion" value="<?php echo $sol['id_afiliacion']; ?>">
-                                <input type="hidden" name="accion" value="aprobar">
-                                <button type="submit" class="btn btn-success btn-sm w-100"><i class="bi bi-check-lg"></i> Aprobar</button>
-                            </form>
-                            
-                            <form action="../procesos/gestionar_afiliacion.php" method="POST" class="w-50">
-                                <input type="hidden" name="id_afiliacion" value="<?php echo $sol['id_afiliacion']; ?>">
-                                <input type="hidden" name="accion" value="rechazar">
-                                <button type="submit" class="btn btn-outline-danger btn-sm w-100"><i class="bi bi-x-lg"></i> Rechazar</button>
-                            </form>
-                        </div>
-                    </div>
-                <?php endwhile; ?>
-            </div>
-        <?php else: ?>
-            <div class="text-center py-3 text-muted">
-                <i class="bi bi-inbox fs-4 d-block mb-2"></i>
-                No tienes solicitudes nuevas.
-            </div>
-        <?php endif; ?>
-    </div>
-</div>
                     <div class="card-body">
                         <form action="../procesos/actualizar_horario.php" method="POST" class="mb-4">
                             <h6><i class="bi bi-clock-fill me-2"></i>Horario Comercial</h6>
@@ -266,16 +261,13 @@ include '../includes/header.php';
                             </div>
                             <div class="card-body">
                                 <?php
-                                $id_restaurante = $_SESSION['restaurante_id'];
-
-                                // CORRECCIÓN: Quitamos 'fecha_solicitud' y 'apellido' que no existen en tu BD
                                 $sql_solicitudes = "SELECT ra.id AS id_afiliacion, r.nombre, r.telefono
                             FROM repartidor_afiliaciones ra
                             JOIN repartidores r ON ra.id_repartidor = r.id
                             WHERE ra.id_restaurante = ? AND ra.estado_afiliacion = 'pendiente'";
 
                                 $stmt_sol = $conn->prepare($sql_solicitudes);
-                                $stmt_sol->bind_param("i", $id_restaurante);
+                                $stmt_sol->bind_param("i", $id_restaurante_actual);
                                 $stmt_sol->execute();
                                 $res_sol = $stmt_sol->get_result();
 
@@ -353,7 +345,7 @@ include '../includes/header.php';
                     <div id="gps-status" class="form-text mt-1"></div>
                 </form>
             </div>
-            <div class="col-lg-6">
+            <div class="col-lg-6 mt-4">
                 <div class="card dashboard-card h-100">
                     <div class="card-header bg-white">
                         <h5 class="mb-0 fw-bold"><i class="bi bi-tags-fill me-2 text-primary"></i>Categorías del
@@ -500,256 +492,71 @@ include '../includes/header.php';
 
     </div>
 </div>
+
 <script>
+    // SCRIPT PARA INICIALIZAR EL GRÁFICO DE BARRAS
     document.addEventListener('DOMContentLoaded', function() {
-        // ==========================================
-        // 1. VARIABLES Y CONFIGURACIÓN INICIAL
-        // ==========================================
-        const selectPago = document.getElementById('metodo_pago');
-        const containerYape = document.getElementById('info-yape-container');
-        const displayYapeNum = document.getElementById('yape-numero-display');
-        const displayYapeQR = document.getElementById('yape-qr-img-placeholder');
-        const btnCopiar = document.getElementById('btn-copiar-yape');
-        const msgCopia = document.getElementById('mensaje-copia');
-        const divVuelto = document.getElementById('div-vuelto');
-        const inputVuelto = document.getElementById('monto_pagar');
-
-        // Variables para el mapa y envío
-        const defaultLat = -10.683; // Cerro de Pasco
-        const defaultLng = -76.256;
-        let userLat = defaultLat;
-        let userLng = defaultLng;
-        let datosRestaurante = {
-            lat: null,
-            lon: null,
-            yapeNumero: '',
-            yapeQR: ''
-        };
-
-        // Inicializar Mapa
-        const mapa = L.map('mapa-checkout').setView([defaultLat, defaultLng], 15);
-        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-            attribution: '© OpenStreetMap'
-        }).addTo(mapa);
-
-        // Marcador movible
-        let marcador = L.marker([defaultLat, defaultLng], {
-            draggable: true
-        }).addTo(mapa);
-
-        // ==========================================
-        // 2. OBTENER DATOS DEL RESTAURANTE
-        // ==========================================
-        // Recuperamos el ID del restaurante guardado en el carrito
-        const carritoKey = `carritoData_${CLIENTE_ID}`; // CLIENTE_ID viene de PHP
-        const carritoData = JSON.parse(sessionStorage.getItem(carritoKey));
-
-        if (carritoData && carritoData.restauranteId) {
-            // Rellenar el input hidden del ID restaurante
-            document.getElementById('id_restaurante').value = carritoData.restauranteId;
-            document.getElementById('carrito_data').value = JSON.stringify(carritoData.items);
-
-            // Pedir datos al servidor
-            fetch(`procesos/obtener_datos_restaurante.php?id_restaurante=${carritoData.restauranteId}`)
-                .then(response => response.json())
-                .then(resp => {
-                    if (resp.status === 'success') {
-                        datosRestaurante.lat = parseFloat(resp.data.latitud);
-                        datosRestaurante.lon = parseFloat(resp.data.longitud);
-                        datosRestaurante.yapeNumero = resp.data.yape_numero;
-                        datosRestaurante.yapeQR = resp.data.yape_qr;
-
-                        // Una vez tenemos los datos, recalculamos por si acaso
-                        actualizarTotalesEnvio();
-                    }
-                })
-                .catch(err => console.error("Error cargando datos restaurante:", err));
-        }
-
-        // ==========================================
-        // 3. LÓGICA DE CÁLCULO DE ENVÍO
-        // ==========================================
-        function calcularCosto(clienteLat, clienteLon) {
-            // Si el restaurante no tiene mapa configurado, cobramos tarifa base
-            if (!datosRestaurante.lat || !datosRestaurante.lon) return 5.00;
-
-            const R = 6371; // Radio tierra km
-            const dLat = (clienteLat - datosRestaurante.lat) * Math.PI / 180;
-            const dLon = (clienteLon - datosRestaurante.lon) * Math.PI / 180;
-            const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-                Math.cos(datosRestaurante.lat * Math.PI / 180) * Math.cos(clienteLat * Math.PI / 180) * Math.sin(dLon / 2) * Math.sin(dLon / 2);
-            const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-            const distancia = R * c;
-
-            // TARIFA: Base S/5.00 por 1.5km, luego S/2.00 por cada km extra
-            let costo = 5.00;
-            if (distancia > 1.5) {
-                costo += (distancia - 1.5) * 2.00;
-            }
-            return Math.round(costo * 10) / 10; // Redondear a 1 decimal
-        }
-
-        function actualizarTotalesEnvio() {
-            const costoEnvio = calcularCosto(userLat, userLng);
-
-            // 1. Actualizar inputs ocultos para que se guarden en BD
-            document.getElementById('latitud').value = userLat;
-            document.getElementById('longitud').value = userLng;
-
-            // 2. Calcular subtotal de productos desde el carrito guardado
-            let subtotalProductos = 0;
-            if (carritoData && carritoData.items) {
-                carritoData.items.forEach(item => {
-                    subtotalProductos += (item.precio * item.cantidad);
-                });
-            }
-            const totalPagar = subtotalProductos + costoEnvio;
-
-            // 3. ACTUALIZAR LA TABLA VISUALMENTE
-            const tfoot = document.querySelector('.summary-table tfoot');
-            let rowEnvio = document.getElementById('row-costo-envio');
-
-            // Si la fila de envío no existe, la creamos
-            if (!rowEnvio && tfoot) {
-                rowEnvio = document.createElement('tr');
-                rowEnvio.id = 'row-costo-envio';
-                // Insertamos antes de la última fila (que es el Total)
-                const filaTotal = tfoot.lastElementChild;
-                rowEnvio.innerHTML = `
-                <td colspan="2" class="text-end text-muted small pe-4">Costo de Envío (Distancia)</td>
-                <td class="text-end text-muted small pe-4" id="valor-envio"></td>
-                <td></td>
-            `;
-                tfoot.insertBefore(rowEnvio, filaTotal);
-            }
-
-            // Actualizar textos
-            if (document.getElementById('valor-envio')) {
-                document.getElementById('valor-envio').textContent = `S/ ${costoEnvio.toFixed(2)}`;
-            }
-
-            // Actualizar el Total Grande
-            const celdaTotal = document.querySelector('.total-row .h5');
-            if (celdaTotal) {
-                celdaTotal.textContent = `S/ ${totalPagar.toFixed(2)}`;
-            }
-        }
-
-        // ==========================================
-        // 4. EVENTOS DEL MAPA Y GPS
-        // ==========================================
-
-        // A) Si muevo el pin manualmente
-        marcador.on('dragend', function(e) {
-            const pos = e.target.getLatLng();
-            userLat = pos.lat;
-            userLng = pos.lng;
-            actualizarTotalesEnvio(); // <--- IMPORTANTE: Recalcula al soltar
-        });
-
-        // B) Si uso el botón de GPS
-        const btnGps = document.getElementById('usar-gps-btn');
-        const gpsStatus = document.getElementById('gps-status');
-        const dirInput = document.getElementById('direccion_pedido');
-
-        if (btnGps) {
-            btnGps.addEventListener('click', function() {
-                if (navigator.geolocation) {
-                    gpsStatus.innerHTML = '<span class="text-primary spinner-border spinner-border-sm"></span> Buscando...';
-
-                    navigator.geolocation.getCurrentPosition(
-                        function(position) {
-                            userLat = position.coords.latitude;
-                            userLng = position.coords.longitude;
-
-                            // 1. Mover mapa y marcador
-                            mapa.setView([userLat, userLng], 16);
-                            marcador.setLatLng([userLat, userLng]);
-
-                            // 2. Rellenar campo de texto (opcional)
-                            dirInput.value = `Ubicación GPS (Lat: ${userLat.toFixed(4)}, Lon: ${userLng.toFixed(4)}) - Completa detalles...`;
-
-                            // 3. RECALCULAR PRECIO
-                            actualizarTotalesEnvio();
-
-                            gpsStatus.innerHTML = '<span class="text-success fw-bold"><i class="bi bi-check-circle"></i> Ubicación y precio actualizados</span>';
-                        },
-                        function(error) {
-                            console.error(error);
-                            gpsStatus.innerHTML = '<span class="text-danger">Error: No se pudo obtener ubicación.</span>';
-                        }, {
-                            enableHighAccuracy: true
+        const ctx = document.getElementById('ventasChart').getContext('2d');
+        const ventasDias = <?php echo json_encode($ventas_dias); ?>;
+        
+        new Chart(ctx, {
+            type: 'bar',
+            data: {
+                labels: ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo'],
+                datasets: [{
+                    label: 'Ingresos Netos (S/)',
+                    data: ventasDias,
+                    backgroundColor: 'rgba(13, 110, 253, 0.6)',
+                    borderColor: 'rgba(13, 110, 253, 1)',
+                    borderWidth: 1,
+                    borderRadius: 5,
+                    barPercentage: 0.6
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                scales: {
+                    y: {
+                        beginAtZero: true,
+                        ticks: {
+                            callback: function(value) {
+                                return 'S/ ' + value;
+                            }
                         }
-                    );
-                } else {
-                    gpsStatus.innerHTML = '<span class="text-danger">Tu navegador no soporta GPS.</span>';
-                }
-            });
-        }
-
-        // ==========================================
-        // 5. LÓGICA DE YAPE Y VUELTO (Visualización)
-        // ==========================================
-        selectPago.addEventListener('change', function() {
-            containerYape.style.display = 'none';
-            divVuelto.style.display = 'none';
-            inputVuelto.removeAttribute('required');
-
-            if (this.value === 'yape') {
-                containerYape.style.display = 'block';
-                displayYapeNum.textContent = datosRestaurante.yapeNumero || "No registrado";
-                if (datosRestaurante.yapeQR) {
-                    displayYapeQR.innerHTML = `<img src="assets/img/qr/${datosRestaurante.yapeQR}" class="img-fluid rounded border" style="max-width: 200px;">`;
-                } else {
-                    displayYapeQR.innerHTML = '<span class="text-muted small">Sin código QR</span>';
-                }
-            } else if (this.value === 'efectivo') {
-                divVuelto.style.display = 'block';
-                inputVuelto.setAttribute('required', 'true');
-            }
-        });
-
-        // Copiar número Yape
-        if (btnCopiar) {
-            btnCopiar.addEventListener('click', function() {
-                const num = displayYapeNum.textContent;
-                if (num && num.length > 5) {
-                    navigator.clipboard.writeText(num);
-                    if (msgCopia) {
-                        msgCopia.style.display = 'inline-block';
-                        setTimeout(() => msgCopia.style.display = 'none', 2000);
+                    }
+                },
+                plugins: {
+                    tooltip: {
+                        callbacks: {
+                            label: function(context) {
+                                return ' S/ ' + context.parsed.y.toFixed(2);
+                            }
+                        }
+                    },
+                    legend: {
+                        display: false 
                     }
                 }
-            });
-        }
-
-        // Ajuste final visual del mapa
-        setTimeout(() => {
-            mapa.invalidateSize();
-        }, 500);
+            }
+        });
     });
 </script>
-<script>
-    document.addEventListener('DOMContentLoaded', function() {
 
-        // 1. OBTENER COORDENADAS INICIALES
-        // Si la BD ya tiene lat/lon, las usamos. Si no, usamos las de Cerro de Pasco por defecto.
+<script>
+    // SCRIPT DEL MAPA Y UBICACIÓN
+    document.addEventListener('DOMContentLoaded', function() {
         const latInput = document.getElementById('lat_rest');
         const lonInput = document.getElementById('lon_rest');
         const gpsStatus = document.getElementById('gps-status');
         const btnGps = document.getElementById('btn-detectar-ubicacion');
 
-        // Coordenadas por defecto (Cerro de Pasco)
         const defaultLat = -10.683;
         const defaultLng = -76.256;
 
-        // Verificar si los inputs tienen valor numérico válido
         let currentLat = (latInput.value && !isNaN(latInput.value)) ? parseFloat(latInput.value) : defaultLat;
         let currentLng = (lonInput.value && !isNaN(lonInput.value)) ? parseFloat(lonInput.value) : defaultLng;
 
-        // 2. INICIALIZAR MAPA
-        // Usamos el ID correcto del dashboard: 'mapa-restaurante'
-        // Aseguramos que el div exista para evitar errores
         if (document.getElementById('mapa-restaurante')) {
             const mapa = L.map('mapa-restaurante').setView([currentLat, currentLng], 15);
 
@@ -757,19 +564,16 @@ include '../includes/header.php';
                 attribution: '© OpenStreetMap'
             }).addTo(mapa);
 
-            // 3. MARCADOR
             let marcador = L.marker([currentLat, currentLng], {
                 draggable: true
             }).addTo(mapa);
 
-            // Evento: Al mover el marcador manualmente (CORREGIDO 'marker' por 'e.target')
             marcador.on('dragend', function(e) {
                 const position = e.target.getLatLng();
-                latInput.value = position.lat.toFixed(6); // Redondear para que se vea ordenado
+                latInput.value = position.lat.toFixed(6); 
                 lonInput.value = position.lng.toFixed(6);
             });
 
-            // 4. BOTÓN "USAR MI GPS"
             if (btnGps) {
                 btnGps.addEventListener('click', function() {
                     if (navigator.geolocation) {
@@ -780,11 +584,9 @@ include '../includes/header.php';
                                 const lat = position.coords.latitude;
                                 const lng = position.coords.longitude;
 
-                                // Actualizar mapa y marcador
                                 mapa.setView([lat, lng], 18);
                                 marcador.setLatLng([lat, lng]);
 
-                                // Actualizar inputs
                                 latInput.value = lat.toFixed(6);
                                 lonInput.value = lng.toFixed(6);
 
@@ -810,17 +612,16 @@ include '../includes/header.php';
                 });
             }
 
-            // Ajuste visual del mapa al cargar (para que no se vea gris)
             setTimeout(() => {
                 mapa.invalidateSize();
             }, 500);
         }
     });
 </script>
+
 <?php
-// --- Cierres de conexión (SIN CAMBIOS) ---
+// Cierres de conexión
 $stmt_platos->close();
-$stmt_count->close();
 $conn->close();
 include '../includes/footer.php';
 ?>

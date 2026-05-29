@@ -34,9 +34,18 @@ $resultado = $stmt->get_result();
                     <div class="mb-3">
                         <i class="bi bi-shop text-primary"></i> <strong>Recoger en:</strong> <?php echo htmlspecialchars($pedido['nombre_restaurante']); ?>
                     </div>
+                    
                     <div class="mb-3">
                         <i class="bi bi-person text-success"></i> <strong>Entregar a:</strong> <?php echo htmlspecialchars($pedido['direccion_pedido']); ?>
-                    </div>
+                        
+                        <?php if (!empty($pedido['telefono_pedido'])): ?>
+                            <div class="mt-2">
+                                <a href="https://wa.me/51<?php echo htmlspecialchars($pedido['telefono_pedido']); ?>?text=Hola,%20te%20escribo%20de%20CerroDelivery%20por%20tu%20pedido%20%23." target="_blank" class="btn btn-sm btn-outline-success fw-bold">
+                                    <i class="bi bi-whatsapp me-1"></i> Contactar Cliente
+                                </a>
+                            </div>
+                        <?php endif; ?>
+                        </div>
                     
                     <div class="mb-3 p-3 bg-light rounded border">
                         <i class="bi bi-wallet2 text-warning me-2"></i><strong>Método de pago:</strong> <span class="text-uppercase fw-bold"><?php echo htmlspecialchars($pedido['metodo_pago']); ?></span>

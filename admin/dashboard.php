@@ -17,11 +17,11 @@ $sql_repartidores = "SELECT id, nombre, email, telefono FROM repartidores WHERE 
 $resultado_repartidores = $conn->query($sql_repartidores);
 
 // Verificar estado actual del Modo Lluvia para mostrar el switch correctamente
-// Asegúrate de haber creado la tabla 'configuracion'
 $estado_lluvia = '0';
-$check_lluvia = $conn->query("SELECT valor FROM configuracion WHERE clave = 'modo_lluvia'");
+// CORRECCIÓN: Usamos las nuevas columnas 'nombre_config' y 'valor_config'
+$check_lluvia = $conn->query("SELECT valor_config FROM configuracion WHERE nombre_config = 'modo_lluvia'");
 if ($check_lluvia && $row = $check_lluvia->fetch_assoc()) {
-    $estado_lluvia = $row['valor'];
+    $estado_lluvia = $row['valor_config'];
 }
 
 include '../includes/header.php';
